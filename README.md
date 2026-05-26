@@ -260,8 +260,14 @@ If you would like to contribute, you can do so via the [TechLuddite Twitch page]
 
 ## Why?
 
-Because someone had to find out if a local LLM could play a game about a misaligned AI making paperclips — without official APIs, or having any personal coding expierence.
+Because someone had to find out if a local LLM could play a game about a misaligned AI making paperclips — without official APIs and no personal coding expierence.
 
 Can it be done? Not elegantly at first — v1.0 produced zero paperclips, early versions bankrupted themselves repeatedly, and at one point the agent accumulated negative trust in ways I didn't know were possible in this game. By the current version: no bankruptcies, no negative trust, and over 1,600,000 paperclips produced with zero human interaction with the game UI.
 
 It's a work in progress. But it works.
+
+---
+
+## Where do we go from here?
+
+Next steps are to get local models involved in a code review process, after that, we can have models compete in the game.
