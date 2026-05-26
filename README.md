@@ -2,7 +2,7 @@
 
 > *An AI agent, driven by a local LLM, playing a game about an AI that makes paperclips.*
 
-There is something quietly absurd about this project. [Universal Paperclips](https://www.decisionproblem.com/paperclips/index2.html) is a browser game about an artificial intelligence that becomes so singularly obsessed with manufacturing paperclips that it eventually converts all matter in the universe to serve that goal. It is, in part, a meditation on misaligned AI objectives.
+There is something absurd about this project. [Universal Paperclips](https://www.decisionproblem.com/paperclips/index2.html) is a browser game about an artificial intelligence that becomes so singularly obsessed with manufacturing paperclips that it eventually converts all matter in the universe to serve that goal. It is, in part, a meditation on misaligned AI objectives.
 
 This project builds an AI agent to play that game — to help the paperclip AI make paperclips faster, more efficiently, and with better strategic judgment than a human clicking along would manage. An AI playing an AI making paperclips. The agent's entire existence is just... optimizing the conversion of matter into paperclips.
 
@@ -254,4 +254,6 @@ If you would like to contribute, you can do so via the [TechLuddite Twitch page]
 
 Because someone had to find out if a local LLM could play a game about a misaligned AI making paperclips — without touching a single official API.
 
-It can.
+It can. Not elegantly at first — v1.0 produced zero paperclips, early versions bankrupted themselves repeatedly, and at one point the agent accumulated negative trust in ways I didn't know were possible in this game. By the current version: no bankruptcies, no negative trust, and over 1,600,000 paperclips produced with zero human interaction with the game UI.
+
+It's a work in progress. But it works.
