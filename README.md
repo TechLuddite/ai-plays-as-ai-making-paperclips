@@ -1,0 +1,228 @@
+# ai-plays-as-ai-making-paperclips
+
+> *An AI agent, driven by a local LLM, playing a game about an AI that makes paperclips.*
+
+There is something quietly absurd about this project. [Universal Paperclips](https://www.decisionproblem.com/paperclips/index2.html) is a browser game about an artificial intelligence that becomes so singularly obsessed with manufacturing paperclips that it eventually converts all matter in the universe to serve that goal. It is, in part, a meditation on misaligned AI objectives.
+
+This project builds an AI agent to play that game — to help the paperclip AI make paperclips faster, more efficiently, and with better strategic judgment than a human clicking along would manage. An AI playing an AI making paperclips. The agent's entire existence is just... optimizing the conversion of matter into paperclips.
+
+Beyond the irony, this project serves a genuine technical purpose: it is a proof-of-concept for **LLM-driven browser automation without any available API**. No developer tools, no game hooks, no official interface — just DOM observation, click injection via a userscript, and a local language model making decisions in a ReAct loop. The same architecture applies to any web-based tool that doesn't expose an API.
+
+---
+
+## How It Works
+
+```
+Browser (Tampermonkey userscript)
+  │  POST /state every 2s — pushes game state as JSON
+  ▼
+Flask Relay  (localhost:5000)
+  │  agent reads state via GET /state
+  ▼
+Python ReAct Agent
+  │  builds prompt, queries local LLM
+  ▼
+Ollama  (localhost:11434)
+  │  returns Thought + Action
+  ▼
+Flask Relay
+  │  browser polls GET /action
+  ▼
+Browser (userscript executes click)
+```
+
+### Division of Responsibility
+
+The system splits work between two layers to avoid burning LLM inference time on decisions that don't need intelligence:
+
+**Userscript (fast, rule-based — 20x/second):**
+- Clicking Make Paperclip in early game
+- Buying wire when stock is low
+- Buying AutoClippers and MegaClippers when funds allow
+- Price management (lower when oversupplied, raise when demand is high)
+- Buying Marketing upgrades automatically
+- Spending ops/creativity/trust on projects via a priority queue
+- Emergency wire recovery
+
+**LLM Agent (ReAct loop — every 2 seconds):**
+- Strategic pricing decisions
+- Trust allocation (processors vs memory balance)
+- Project prioritization for edge cases
+- Phase transition awareness
+- Any decision requiring reasoning about tradeoffs
+
+Terminal output is intentionally human-readable:
+```
+────────────────────────────────────────────────────────────
+[14:22:01] TICK 47
+────────────────────────────────────────────────────────────
+[OBS]
+  clips                  12,847
+  unsoldClips            3
+  demand                 266%  ↑ consider raise_price
+  funds                  $43.12
+  wire                   1,374  
+  autoclippers           33
+  trust                  7  → add_memory or add_processor
+  memory                 6  (ops cap: 6,000)
+  processors             4
+  operations             3,301 / 6,000
+  availableProjects      Improved AutoClippers (750 ops)
+
+[14:22:01] Querying qwen2.5...
+[THK] Demand is 266% with only 3 unsold clips — we should raise price to capture more revenue per clip.
+[ACT] raise_price
+```
+
+---
+
+## Requirements
+
+| Tool | Purpose |
+|------|---------|
+| [Chrome](https://www.google.com/chrome/) | Run the game visibly |
+| [Tampermonkey](https://chromewebstore.google.com/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo) | Inject the userscript into the game page |
+| [Ollama](https://ollama.com/download/windows) | Run a local LLM |
+| Python 3.10+ | Run the relay and agent |
+
+---
+
+## Setup
+
+### 1. Install Tampermonkey
+Install the [Tampermonkey Chrome extension](https://chromewebstore.google.com/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo).
+
+### 2. Install Ollama and pull a model
+Download and run the [Ollama installer](https://ollama.com/download/windows), then in a terminal:
+```
+ollama pull qwen2.5
+```
+`qwen2.5` is the recommended model — good reasoning, fast inference. If you have a capable GPU (e.g. RTX 3090), `qwen3.6` or larger will reason better.
+
+### 3. Install Python dependencies
+```
+py -m pip install flask requests
+```
+
+### 4. Install the userscript
+1. Open Tampermonkey → Dashboard → click the **+** tab
+2. Delete any placeholder content
+3. Paste the full contents of `bridge.user.js`
+4. Press **Ctrl+S** to save
+
+### 5. Run the relay and agent
+Open two terminal windows in the project folder:
+
+**Terminal 1 — Relay:**
+```
+py relay.py
+```
+
+**Terminal 2 — Agent:**
+```
+py agent.py
+```
+
+### 6. Open the game
+Navigate to: **https://www.decisionproblem.com/paperclips/index2.html**
+
+You should see a **🤖 Agent Active** badge in the bottom-right corner. The agent terminal will begin printing observations, thoughts, and actions within a few seconds.
+
+---
+
+## Configuration
+
+In `agent.py`:
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `MODEL` | `qwen2.5` | Ollama model name |
+| `LOOP_DELAY` | `2.0` | Seconds between agent ticks |
+| `MAX_HISTORY` | `6` | Past actions included in each prompt |
+
+In `bridge.user.js`:
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `STATE_MS` | `2000` | How often state is pushed to relay (ms) |
+| `ACTION_MS` | `500` | How often the browser polls for actions (ms) |
+
+---
+
+## Architecture Notes
+
+- **No persistent memory** — the agent uses a rolling window of recent decisions as context. Each tick is a fresh LLM call with current state + history.
+- **ReAct pattern** — every LLM response is structured as `Thought:` followed by `Action:`, making reasoning transparent and parseable.
+- **Relay as broker** — Flask sits between browser and agent, decoupling their timing. The browser pushes state on its own interval; the agent reads and writes independently.
+- **Validation** — the agent validates LLM action output before sending, substituting `wait` for any hallucinated actions.
+
+---
+
+## File Overview
+
+| File | Purpose |
+|------|---------|
+| `relay.py` | Flask HTTP bridge between browser and agent |
+| `agent.py` | ReAct loop, LLM calls, strategic decision logic |
+| `bridge.user.js` | Tampermonkey userscript — state extraction and action execution |
+
+---
+
+## Tested On
+
+- Windows 11, Chrome, Tampermonkey
+- Python 3.14
+- Ollama with `qwen2.5` (4.7GB) and `qwen3.6` (23GB)
+- RTX 3090 24GB VRAM
+
+---
+
+## Limitations & Known Issues
+
+- The agent plays Phase 1 and Phase 2 well. Phase 3 (space exploration, probe design) is not yet fully guided.
+- Marketing upgrades require sufficient funds buffer — early game marketing may lag slightly.
+- The LLM occasionally produces invalid actions; these are caught and substituted with `wait`.
+- If Ollama is slow to respond, the agent falls back to `wait` for that tick.
+
+---
+
+## Why?
+
+Because someone had to find out if a local LLM could play a game about a misaligned AI making paperclips — without touching a single official API.
+
+It can.
+
+---
+
+## Credits & Acknowledgements
+
+### Universal Paperclips
+This project exists because of a genuinely great game. **Universal Paperclips** was designed by [Frank Lantz](http://www.franklantz.net/) and programmed by Frank Lantz and [Bennett Foddy](https://en.wikipedia.org/wiki/Bennett_Foddy), released in 2017 by [Everybody House Games](http://www.franklantz.net/universal-paperclips/). The game is a playable version of philosopher Nick Bostrom's paperclip maximizer thought experiment — and it is an all-time classic of the incremental game genre.
+
+Play it here: **https://www.decisionproblem.com/paperclips/index2.html**
+
+### Open Source Stack
+This project is built on the shoulders of:
+
+| Project | Role | License |
+|---------|------|---------|
+| [Ollama](https://github.com/ollama/ollama) | Local LLM inference server | MIT |
+| [Qwen 2.5](https://github.com/QwenLM/Qwen2.5) (Alibaba / Qwen Team) | Language model used for agent reasoning | Apache 2.0 |
+| [Flask](https://github.com/pallets/flask) | Python HTTP relay server | BSD-3-Clause |
+| [Tampermonkey](https://www.tampermonkey.net/) | Browser userscript manager | Proprietary (free) |
+| [Python](https://www.python.org/) | Agent runtime | PSF License |
+| [Requests](https://github.com/psf/requests) | HTTP client library | Apache 2.0 |
+| [Anthropic Claude](https://claude.ai) | AI coding assistant used to build this project | — |
+
+### Concept Lineage
+The paperclip maximizer thought experiment was first described by philosopher **Nick Bostrom** in 2003 and later expanded in his book *Superintelligence* (2014). Universal Paperclips is a direct, playable exploration of that idea.
+
+The **ReAct** prompting pattern (Reason + Act) used by the agent is described in the paper:
+> Yao et al., *ReAct: Synergizing Reasoning and Acting in Language Models*, ICLR 2023.
+> https://arxiv.org/abs/2210.03629
+
+## Attribution
+
+This project was built through iterative prompting and feedback by **TechLuddite**, using [Claude](https://claude.ai) (Anthropic) as the coding assistant. The code, architecture, and documentation were generated by Claude through a collaborative back-and-forth process — TechLuddite directed the vision, identified bugs, tested each version in real-time, and shaped every decision. Claude wrote the code.
+
+If you are wondering whether a non-coder can build something like this through LLM collaboration alone: yes. That is also part of what this project demonstrates.
