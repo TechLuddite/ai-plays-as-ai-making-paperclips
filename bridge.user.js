@@ -136,6 +136,9 @@
             wireBuyerOn:       wireBuyerActive(),
             phase:             getPhase(),
             availableProjects: getProjects(),
+            // Strategic Modeling / AutoTourney state (null when not yet unlocked)
+            autoTourneyOn:     isVisible('strategyEngine') ? getText('autoTourneyStatus') : null,
+            stratPicker:       isVisible('strategyEngine') ? (document.getElementById('stratPicker')?.value || null) : null,
         }, invest, p3);
     }
 
@@ -201,7 +204,13 @@
         'revtracker',
         'quantum computing',
         'algorithmic trading',
+        'photonic chip',
         'strategic modeling',
+        'megaclippers',               // project version (12,000 ops) — unlocks the mega button
+        'spectral froth annealment',  // 200% more wire supply per spool
+        'new strategy: a100',         // better tournament strategy for yomi
+        'quantum foam annealment',    // 1000% more wire supply per spool
+        'hypnodrones',
         // creativity-cost
         'creativity',
         'neural net optimizer',
@@ -403,6 +412,27 @@
             case 'upgrade_investment': {
                 success = clickBtn('btnImproveInvestments');
                 note    = success ? 'investment engine upgraded' : 'btnImproveInvestments not visible';
+                break;
+            }
+
+            // ── Strategic Modeling / AutoTourney ──────────────────────────────
+            case 'run_tournament': {
+                success = clickBtn('btnRunTournament');
+                note    = success ? 'tournament run' : 'run tournament button not visible';
+                break;
+            }
+            case 'toggle_auto_tourney': {
+                success = clickBtn('btnToggleAutoTourney');
+                note    = success ? 'AutoTourney toggled' : 'AutoTourney button not visible';
+                break;
+            }
+            case 'set_strategy_random': {
+                const el = document.getElementById('stratPicker');
+                if (!el || el.offsetParent === null) { note = 'stratPicker not visible'; break; }
+                el.value = '0'; // '0' = RANDOM strategy
+                el.dispatchEvent(new Event('change'));
+                success = true;
+                note    = 'strategy set to RANDOM';
                 break;
             }
 

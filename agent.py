@@ -43,8 +43,13 @@ VALID ACTIONS — use exactly one, spelled exactly as shown:
     raise_price
     buy_marketing
     add_processor               — spend 1 trust to add a processor
-    add_memory                  — spend 1 trust to add memory (PRIORITIZE THIS)
+    add_memory                  — spend 1 trust to add memory
     buy_project:<project name>  — buy a visible, affordable project by partial name
+
+  STRATEGIC MODELING (Phase 2 — when autoTourneyOn appears in state):
+    toggle_auto_tourney         — enable/disable AutoTourney (generates Yomi passively)
+    set_strategy_random         — set tournament strategy to RANDOM (do once on unlock)
+    run_tournament              — run a single tournament manually (costs 1,000 ops)
 
   INVESTMENTS (Phase 2 — only when portValue appears in state):
     invest_deposit              — move available funds into investment bankroll
@@ -87,18 +92,27 @@ WHAT THE BROWSER HANDLES AUTOMATICALLY — never choose these:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 YOUR JOB — work through this priority list each tick:
 
-1. INVESTMENTS — ONLY when portValue is visible in your state (it appears after buying
+1. STRATEGIC MODELING / YOMI (when autoTourneyOn appears in state):
+   Yomi is earned from tournaments. It funds probe trust and investment upgrades.
+   a. On first unlock: set_strategy_random (picks a strategy), then toggle_auto_tourney
+      to turn AutoTourney ON — it runs tournaments automatically from then on
+   b. If autoTourneyOn = OFF → toggle_auto_tourney to re-enable it
+   c. If autoTourneyOn = ON → nothing to do here, Yomi accumulates passively
+
+2. INVESTMENTS — ONLY when portValue is visible in your state (it appears after buying
    Algorithmic Trading). If portValue is NOT in your state, the investment system does
    not exist yet — do NOT choose any invest_* or set_invest_* action.
    When portValue IS present:
    a. investStrategy should be 'hi' for best returns → set_invest_hi if it is not 'hi'
-   b. If investBankroll < $5 and funds > $50 → invest_deposit  (fund the engine)
-   c. If investBankroll > $0 and funds > $200 → invest_deposit  (keep compounding)
+   b. If investBankroll < $5 and funds > $100 → invest_deposit  (fund the engine)
+   c. If investBankroll > $0 and funds > $1000 → invest_deposit  (keep compounding)
    d. If funds < $5 → invest_withdraw  (emergency — protect wire/clipper operations)
    e. upgrade_investment when Yomi >= 100 — higher engine level = better returns
 
-2. PROJECTS — only when a non-greyed clickable project appears that is NOT in the
+3. PROJECTS — only when a non-greyed clickable project appears that is NOT in the
    auto-buy list above (check availableProjects carefully — greyed = unavailable)
+   NOTE: Xavier Re-initialization (100,000 creat) reallocates ALL trust — avoid
+   auto-buying this; it requires deliberate trust reallocation planning.
 
 3. PHASE 3 PROBE DESIGN (when colonized appears in state):
    - Rep and Speed are highest leverage early — low rep stalls exploration permanently
@@ -287,6 +301,8 @@ def validate_action(action):
         'lower_price', 'raise_price', 'buy_marketing',
         'add_processor', 'add_memory', 'buy_project', 'wait',
         'buy_wire', 'buy_autoclipper', 'buy_megaclipper', 'make_paperclip',
+        # strategic modeling / autotourney
+        'toggle_auto_tourney', 'set_strategy_random', 'run_tournament',
         # investments
         'invest_deposit', 'invest_withdraw',
         'set_invest_low', 'set_invest_med', 'set_invest_hi',
