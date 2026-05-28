@@ -319,6 +319,9 @@
 
         if (unsold > 50) {
             clickBtn('btnLowerPrice');
+        } else if (demand > 500) {
+            // demand extremely high — raise price regardless of inventory level
+            clickBtn('btnRaisePrice');
         } else if (unsold < 10 && demand > 100) {
             clickBtn('btnRaisePrice');
         }

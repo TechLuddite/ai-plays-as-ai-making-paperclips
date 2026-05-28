@@ -237,10 +237,14 @@ def format_state(state):
         if k == 'unsoldClips' and fv > 50:
             flag = " ↓ consider lower_price"
         if k == 'trust' and fv > 0:
-            if proc > mem + 1:
-                flag = " → ADD MEMORY (processors too far ahead!)"
+            available_trust = fv - proc - mem
+            if available_trust >= 1:
+                if proc > mem + 1:
+                    flag = f" → ADD MEMORY (processors too far ahead!) [{int(available_trust)} to spend]"
+                else:
+                    flag = f" → add_memory or add_processor [{int(available_trust)} to spend]"
             else:
-                flag = " → add_memory or add_processor"
+                flag = " (fully allocated — none to spend)"
         if k == 'processors' and proc > mem + 1:
             flag = f" ⚠ WAY AHEAD OF MEMORY ({int(mem)}) — add_memory urgently"
         if k == 'memory':
@@ -264,7 +268,9 @@ def check_trust_action(state):
     trust = safe_float(state.get('trust'), 0)
     proc  = safe_float(state.get('processors'), 0)
     mem   = safe_float(state.get('memory'), 0)
-    if trust < 1 or proc <= 0 or mem <= 0:
+    # available = unspent trust points (trust shown is total, proc+mem is spent)
+    available = trust - proc - mem
+    if available < 1 or proc <= 0 or mem <= 0:
         return None, None
     if mem < proc - 1:
         return 'add_memory', f"memory ({int(mem)}) behind processors ({int(proc)}), expand cap"
