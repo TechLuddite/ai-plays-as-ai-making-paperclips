@@ -87,8 +87,10 @@ WHAT THE BROWSER HANDLES AUTOMATICALLY — never choose these:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 YOUR JOB — work through this priority list each tick:
 
-1. INVESTMENTS (when portValue appears in your state):
-   The investment engine grows passive income — this is your most important job in Phase 2.
+1. INVESTMENTS — ONLY when portValue is visible in your state (it appears after buying
+   Algorithmic Trading). If portValue is NOT in your state, the investment system does
+   not exist yet — do NOT choose any invest_* or set_invest_* action.
+   When portValue IS present:
    a. investStrategy should be 'hi' for best returns → set_invest_hi if it is not 'hi'
    b. If investBankroll < $5 and funds > $50 → invest_deposit  (fund the engine)
    c. If investBankroll > $0 and funds > $200 → invest_deposit  (keep compounding)
@@ -453,6 +455,14 @@ def run():
             if _t - _p - _m < 1:
                 print(f"[WARN] LLM chose {action} but trust fully allocated — substituting wait")
                 action = 'wait'
+
+        # Guard: block investment actions when investment system is not yet active.
+        # portValue is absent from state until Algorithmic Trading is purchased.
+        invest_actions = {'invest_deposit', 'invest_withdraw', 'set_invest_low',
+                          'set_invest_med', 'set_invest_hi', 'upgrade_investment'}
+        if action in invest_actions and not state.get('portValue', ''):
+            print(f"[WARN] LLM chose {action} but investment system not active — substituting wait")
+            action = 'wait'
 
         print(f"[THK] {thought}")
         print(f"[ACT] {action_str}  ({elapsed_ms}ms)")
