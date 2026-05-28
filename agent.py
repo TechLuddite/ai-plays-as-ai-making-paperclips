@@ -97,6 +97,13 @@ CRITICAL TRUST ALLOCATION RULE:
 
   The agent auto-handles this — you rarely need to choose.
   Only choose add_memory/add_processor for fine-tuning.
+
+  IMPORTANT: The trust value shown is your TOTAL accumulated trust.
+  Processors and memory are ALREADY SPENT from that total.
+  Available to spend = trust - processors - memory.
+  If the state shows "(fully allocated - none to spend)", you have
+  ZERO trust points left. Do NOT choose add_memory or add_processor.
+  Choose a completely different action (pricing, investments, wait).
 ═══════════════════════════════════════════════════
 
 INVESTMENTS (Phase 2 — appears after buying Algorithmic Trading):
@@ -461,6 +468,15 @@ def run():
         thought, action_str = parse_response(raw)
         action, args = parse_action(action_str)
         action = validate_action(action)
+
+        # Guard: block trust actions when no trust is actually available to spend
+        if action in ('add_memory', 'add_processor'):
+            _t = safe_float(state.get('trust'), 0)
+            _p = safe_float(state.get('processors'), 0)
+            _m = safe_float(state.get('memory'), 0)
+            if _t - _p - _m < 1:
+                print(f"[WARN] LLM chose {action} but trust fully allocated — substituting wait")
+                action = 'wait'
 
         print(f"[THK] {thought}")
         print(f"[ACT] {action_str}  ({elapsed_ms}ms)")

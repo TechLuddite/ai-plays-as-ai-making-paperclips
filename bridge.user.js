@@ -192,6 +192,7 @@
         'wirebuyer',
         'improved wire extrusion',
         'optimized wire extrusion',
+        'microlattice shapecasting',
         'even better autoclippers',
         'hadwiger clip diagrams',
         'hypno harmonics',
