@@ -355,12 +355,23 @@ def run():
 
     print(f"[{ts()}] ✓ Connected — starting agent loop\n")
 
+    prev_clips = 0  # used to detect when a new game has been started
+
     while True:
         tick += 1
         state = get_state()
 
         # Strip relay metadata before passing state to game logic
         last_result = state.pop('_lastResult', {})
+
+        # Detect new game: clips dropped significantly from the previous tick.
+        # When the user resets the browser, clips go from millions back to near-zero.
+        # Carrying the old history into a new game confuses the LLM badly — clear it.
+        curr_clips = safe_float(state.get('clips'), 0)
+        if prev_clips > 10_000 and curr_clips < prev_clips * 0.1:
+            print(f"[!!!] NEW GAME DETECTED (clips {prev_clips:,.0f} → {curr_clips:,.0f}) — clearing history")
+            history.clear()
+        prev_clips = curr_clips
 
         divider()
         print(f"[{ts()}] TICK {tick}")
