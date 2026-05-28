@@ -89,7 +89,7 @@ YOUR JOB — work through this priority list each tick:
 
 1. INVESTMENTS (when portValue appears in your state):
    The investment engine grows passive income — this is your most important job in Phase 2.
-   a. investStrategy should be 'high' for best returns → set_invest_hi if it is not
+   a. investStrategy should be 'hi' for best returns → set_invest_hi if it is not 'hi'
    b. If investBankroll < $5 and funds > $50 → invest_deposit  (fund the engine)
    c. If investBankroll > $0 and funds > $200 → invest_deposit  (keep compounding)
    d. If funds < $5 → invest_withdraw  (emergency — protect wire/clipper operations)
@@ -396,7 +396,7 @@ def run():
             invest_strategy  = str(state.get('investStrategy', '')).lower()
             funds_now        = safe_float(state.get('funds'), 0)
             if invest_bankroll < 5 and funds_now > 50:
-                if 'high' not in invest_strategy:
+                if invest_strategy != 'hi':
                     inv_reason = f"investment idle — switching to High Risk (funds=${funds_now:.0f})"
                     print(f"[!!!] INVEST OVERRIDE: {inv_reason}")
                     post_action('set_invest_hi', thought=f"OVERRIDE: {inv_reason}")

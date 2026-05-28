@@ -393,6 +393,9 @@
                 if (!el || el.offsetParent === null) { note = 'investStrat not visible'; break; }
                 const valMap = { 'set_invest_low': 'low', 'set_invest_med': 'med', 'set_invest_hi': 'hi' };
                 el.value = valMap[action];
+                // Must dispatch 'change' — the game listens for it to apply the strategy.
+                // Setting el.value alone changes the visual but the game ignores it.
+                el.dispatchEvent(new Event('change'));
                 success  = true;
                 note     = `risk strategy set to ${valMap[action]}`;
                 break;
