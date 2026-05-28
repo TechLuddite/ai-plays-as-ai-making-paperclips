@@ -79,7 +79,8 @@ WHAT THE BROWSER HANDLES AUTOMATICALLY — never choose these:
   - Buying AutoClippers and MegaClippers when wire > 1000 and funds safe
   - Lowering price when unsold > 50; raising when unsold < 10 and demand > 100%
   - Buying marketing when funds > 1.5x cost, wire > 500, unsold < 30
-  - Spending ops/creativity/trust on projects (priority queue)
+  - Spending ops/creativity/trust on projects (priority queue — includes microlattice
+    shapecasting, wirebuyer, autoclippers, catchy jingle, quantum computing, etc.)
   - Emergency: Beg for More Wire when wire=0 and broke
 
 YOUR JOB — strategic decisions:

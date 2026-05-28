@@ -318,11 +318,13 @@
             }
         }
 
-        if (unsold > 50) {
-            clickBtn('btnLowerPrice');
-        } else if (demand > 500) {
-            // demand extremely high — raise price regardless of inventory level
+        // Demand check MUST come first — extreme demand overrides inventory level.
+        // (At 570 clips/sec, having 51 unsold is ~0.1 seconds of production — not a glut.)
+        if (demand > 500) {
+            // Demand is very high — raise price even if unsold seems elevated
             clickBtn('btnRaisePrice');
+        } else if (unsold > 50) {
+            clickBtn('btnLowerPrice');
         } else if (unsold < 10 && demand > 100) {
             clickBtn('btnRaisePrice');
         }
