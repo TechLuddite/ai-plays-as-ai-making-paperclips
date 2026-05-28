@@ -71,97 +71,52 @@ DO NOT invent actions. DO NOT choose greyed-out projects (they will fail).
 Only choose buy_project if the project appears in availableProjects AND is affordable.
 """
 
-SYSTEM_PROMPT = f"""You are an AI agent playing Universal Paperclips at https://www.decisionproblem.com/paperclips/index2.html
+SYSTEM_PROMPT = f"""You are an AI agent playing Universal Paperclips.
 
 WHAT THE BROWSER HANDLES AUTOMATICALLY — never choose these:
-  - Clicking Make Paperclip (20x/sec while autoclippers < 5)
-  - Buying wire when stock < 1000 (skipped if WireBuyer is ON)
-  - Buying AutoClippers and MegaClippers when wire > 1000 and funds safe
-  - Lowering price when unsold > 50; raising when unsold < 10 and demand > 100%
-  - Buying marketing when funds > 1.5x cost, wire > 500, unsold < 30
-  - Spending ops/creativity/trust on projects (priority queue — includes microlattice
-    shapecasting, wirebuyer, autoclippers, catchy jingle, quantum computing, etc.)
-  - Emergency: Beg for More Wire when wire=0 and broke
+  - Make Paperclip, Buy Wire, Buy AutoClipper/MegaClipper
+  - Price management (raise/lower based on demand and inventory)
+  - Marketing purchases
+  - Projects in the auto-buy queue: wirebuyer, improved/optimized autoclippers,
+    microlattice shapecasting, catchy jingle, quantum computing, algorithmic trading,
+    strategic modeling, and most ops/creativity-cost projects
+  - Trust allocation: add_memory and add_processor fire automatically when trust
+    points are available — you do NOT need to choose these ever
+  - Emergency wire recovery
 
-YOUR JOB — strategic decisions:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+YOUR JOB — work through this priority list each tick:
 
-═══════════════════════════════════════════════════
-CRITICAL TRUST ALLOCATION RULE:
-  Memory controls ops cap (memory × 1000 = max ops).
-  Processors control ops regen speed.
-  BOTH matter — you need cap AND speed.
+1. INVESTMENTS (when portValue appears in your state):
+   The investment engine grows passive income — this is your most important job in Phase 2.
+   a. investStrategy should be 'high' for best returns → set_invest_hi if it is not
+   b. If investBankroll < $5 and funds > $50 → invest_deposit  (fund the engine)
+   c. If investBankroll > $0 and funds > $200 → invest_deposit  (keep compounding)
+   d. If funds < $5 → invest_withdraw  (emergency — protect wire/clipper operations)
+   e. upgrade_investment when Yomi >= 100 — higher engine level = better returns
 
-  Target ratio: memory should be ~2 ahead of processors.
-  Example good state: mem=6, proc=4
-  Example bad state:  mem=1, proc=6  (slow cap)
-                      mem=8, proc=1  (huge cap, fills too slowly)
+2. PROJECTS — only when a non-greyed clickable project appears that is NOT in the
+   auto-buy list above (check availableProjects carefully — greyed = unavailable)
 
-  The agent auto-handles this — you rarely need to choose.
-  Only choose add_memory/add_processor for fine-tuning.
+3. PHASE 3 PROBE DESIGN (when colonized appears in state):
+   - Rep and Speed are highest leverage early — low rep stalls exploration permanently
+   - If drifters > 0 and probeTotal falling → raise Combat immediately
+   - Haz prevents attrition (2-3 points is worthwhile)
+   - Fac, Harv, Wire drive production — keep roughly balanced
+   - increase_probe_trust expands your budget (costs Yomi)
 
-  IMPORTANT: The trust value shown is your TOTAL accumulated trust.
-  Processors and memory are ALREADY SPENT from that total.
-  Available to spend = trust - processors - memory.
-  If the state shows "(fully allocated - none to spend)", you have
-  ZERO trust points left. Do NOT choose add_memory or add_processor.
-  Choose a completely different action (pricing, investments, wait).
-═══════════════════════════════════════════════════
+4. WAIT — if nothing needs strategic attention this tick
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-INVESTMENTS (Phase 2 — appears after buying Algorithmic Trading):
-  portValue in your state means the investment system is active.
-  The system has a bankroll (cash deposited) and stocks (auto-bought based on risk level).
-  - First move: set_invest_hi (High Risk gives best long-term returns)
-  - Then: invest_deposit regularly when funds > $20 to grow the portfolio
-  - Safety: invest_withdraw if funds drop below $5 — protect wire/clipper operations
-  - One invest_deposit every 5-10 ticks is plenty; dividends compound automatically
-  - Use upgrade_investment when Yomi is available — higher engine level = better returns
-  - investStrategy in your state shows current risk setting; investBankroll shows cash in account
+TRUST NOTE (informational only — do not act on it):
+  Trust allocation is fully automatic. The override fires add_memory/add_processor
+  whenever trust is available. If state shows "(fully allocated — none to spend)",
+  trust is maxed out — skip to item 1 above.
 
-PROJECTS — IMPORTANT:
-  - availableProjects lists ONLY projects currently visible and clickable
-  - Greyed-out projects are NOT in that list and CANNOT be bought
-  - Only use buy_project for projects explicitly named in availableProjects
-  - Improved AutoClippers (750 ops) — buy immediately when it appears
-  - New Slogan (25 creat, 2500 ops) — boosts marketing 50%
-  - Catchy Jingle — doubles marketing effectiveness
-  - Quantum Computing, Algorithmic Trading, Strategic Modeling — late-game power
-
-PHASE 1 STRATEGY (no computational resources yet):
-  - Price: keep unsold between 5-25; raise when demand high, lower when piling up
-  - Marketing: auto-handled; only intervene if demand is critically stuck
-
-PHASE 2 STRATEGY (processors/memory/ops visible):
-  - MEMORY FIRST — always. Ops cap = memory × 1000.
-  - Keep memory ahead of processors at all times
-  - Activate investments as soon as Algorithmic Trading is purchased
-  - Milestones: memory 4 → Optimized Wire Extrusion; memory 5 → Catchy Jingle
-
-PHASE 3 STRATEGY (space exploration — colonized appears in state):
-  Goal: reach 100% colonized by converting all universal matter into paperclips.
-
-  PROBE DESIGN — you have a trust budget (probeTrust used/total) across 8 stats:
-    Speed:   how fast probes reach new sectors of the universe
-    Nav:     rate at which probes access matter within a sector
-    Rep:     self-replication — probes generate more probes (critical for scale)
-    Haz:     hazard remediation — reduces random probe loss to cosmic hazards
-    Fac:     factory production rate (factories make clips in space)
-    Harv:    harvester drone spawn rate (collect matter → wire)
-    Wire:    wire drone spawn rate (wire → clips)
-    Combat:  offensive/defensive power vs Drifters
-
-  PROBE STRATEGY RULES:
-    - Rep and Speed are highest leverage early — low rep means exploration stalls permanently
-    - Drifters (shown as drifters in state) attack your probes — keep Combat high enough to win
-    - If drifters > 0 and probeTotal is falling, raise Combat immediately
-    - Haz prevents attrition losses — a modest allocation (2-3) is always worthwhile
-    - Fac, Harv, Wire all drive production — keep them roughly balanced
-    - Use increase_probe_trust (costs Yomi) to expand your total budget
-    - Reallocate one point at a time using raise/lower — the game enforces trust limits
-    - performance% shows power system health — if < 100%, production slows (auto-managed)
-
-PRICING NOTES:
-  - Wire is in inches. 1000+ is healthy.
-  - demand 125% with unsold 49 → lower price slightly to clear inventory
+PRICING NOTE:
+  Fast rules handle routine price changes. Only intervene for edge cases the rules
+  miss — e.g. demand stuck at 0% with low unsold inventory.
+  Wire: 1000+ inches is healthy.
 
 {ACTIONS}
 
@@ -433,6 +388,26 @@ def run():
             log_tick(tick, state, trust_reason, trust_action, 0, override="trust")
             time.sleep(LOOP_DELAY)
             continue
+
+        # Hard override: fund investment system when active but bankroll is empty.
+        # portValue is non-empty string only after Algorithmic Trading is purchased.
+        if state.get('portValue', ''):
+            invest_bankroll  = safe_float(state.get('investBankroll'), 0)
+            invest_strategy  = str(state.get('investStrategy', '')).lower()
+            funds_now        = safe_float(state.get('funds'), 0)
+            if invest_bankroll < 5 and funds_now > 50:
+                if 'high' not in invest_strategy:
+                    inv_reason = f"investment idle — switching to High Risk (funds=${funds_now:.0f})"
+                    print(f"[!!!] INVEST OVERRIDE: {inv_reason}")
+                    post_action('set_invest_hi', thought=f"OVERRIDE: {inv_reason}")
+                    log_tick(tick, state, inv_reason, 'set_invest_hi', 0, override="invest")
+                else:
+                    inv_reason = f"investment idle — depositing (bankroll=${invest_bankroll:.0f}, funds=${funds_now:.0f})"
+                    print(f"[!!!] INVEST OVERRIDE: {inv_reason}")
+                    post_action('invest_deposit', thought=f"OVERRIDE: {inv_reason}")
+                    log_tick(tick, state, inv_reason, 'invest_deposit', 0, override="invest")
+                time.sleep(LOOP_DELAY)
+                continue
 
         # Build prompt
         history_text = ""
