@@ -1,0 +1,9 @@
+{
+  "_comment": "Edit values here and restart agent.py to apply. No Python edits needed.",
+  "model":       "qwen2.5",
+  "loop_delay":  2.0,
+  "max_history": 6,
+  "relay_url":   "http://localhost:5000",
+  "ollama_url":  "http://localhost:11434/api/generate",
+  "log_file":    "agent.log"
+}

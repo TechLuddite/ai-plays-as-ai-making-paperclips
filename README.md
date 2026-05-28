@@ -40,20 +40,23 @@ The development process was streamed live on Twitch. All ad revenue from the str
 ```
 Browser (Tampermonkey userscript)
   │  POST /state every 2s — pushes game state as JSON
+  │  POST /result — reports whether each action succeeded or failed
   ▼
 Flask Relay  (localhost:5000)
-  │  agent reads state via GET /state
+  │  GET / — live dashboard (auto-refreshes, no terminal needed)
+  │  agent reads state via GET /state (includes last action result)
   ▼
 Python ReAct Agent
-  │  builds prompt, queries local LLM
+  │  builds prompt with state + result feedback, queries local LLM
+  │  writes one JSON record per tick to agent.log
   ▼
 Ollama  (localhost:11434)
   │  returns Thought + Action
   ▼
 Flask Relay
-  │  browser polls GET /action
+  │  browser polls GET /action (response includes thought for badge)
   ▼
-Browser (userscript executes click)
+Browser (userscript executes click, reports success/failure back)
 ```
 
 ### Division of Responsibility
@@ -94,10 +97,14 @@ Terminal output is intentionally human-readable:
   operations             3,301 / 6,000
   availableProjects      Improved AutoClippers (750 ops)
 
+[FB ] Last: lower_price ✓
+
 [14:22:01] Querying qwen2.5...
 [THK] Demand is 266% with only 3 unsold clips — we should raise price to capture more revenue per clip.
-[ACT] raise_price
+[ACT] raise_price  (347ms)
 ```
+
+A live web dashboard is also available at **http://localhost:5000** while the relay is running — shows state, tick history, thoughts, and action results without opening a terminal. The in-game badge (bottom-right corner) also shows phase, clip count, last action, and the LLM's reasoning in real time.
 
 ---
 
@@ -136,14 +143,20 @@ py -m pip install flask requests
 4. Press **Ctrl+S** to save
 
 ### 5. Run the relay and agent
-Open two terminal windows in the project folder:
 
-**Terminal 1 — Relay:**
+**Option A — Launcher (Windows):**
+```
+.\start.ps1
+```
+Opens the relay in a new terminal window, waits for it to start, then runs the agent in the current window.
+
+**Option B — Manual (two terminals):**
+
+Terminal 1:
 ```
 py relay.py
 ```
-
-**Terminal 2 — Agent:**
+Terminal 2:
 ```
 py agent.py
 ```
@@ -157,15 +170,16 @@ You should see a **🤖 Agent Active** badge in the bottom-right corner. The age
 
 ## Configuration
 
-In `agent.py`:
+Common settings live in `config.json` — edit and restart the agent to apply, no Python changes needed:
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `MODEL` | `qwen2.5` | Ollama model name |
-| `LOOP_DELAY` | `2.0` | Seconds between agent ticks |
-| `MAX_HISTORY` | `6` | Past actions included in each prompt |
+| `model` | `qwen2.5` | Ollama model name |
+| `loop_delay` | `2.0` | Seconds between agent ticks |
+| `max_history` | `6` | Past actions included in each prompt |
+| `log_file` | `agent.log` | JSON-lines tick log path (gitignored) |
 
-In `bridge.user.js`:
+Browser-side constants are at the top of `bridge.user.js`:
 
 | Setting | Default | Description |
 |---------|---------|-------------|
@@ -187,9 +201,12 @@ In `bridge.user.js`:
 
 | File | Purpose |
 |------|---------|
-| `relay.py` | Flask HTTP bridge between browser and agent |
+| `relay.py` | Flask HTTP bridge — state, action, result endpoints + live dashboard |
 | `agent.py` | ReAct loop, LLM calls, strategic decision logic |
-| `bridge.user.js` | Tampermonkey userscript — state extraction and action execution |
+| `bridge.user.js` | Tampermonkey userscript — state extraction, action execution, result reporting |
+| `config.json` | Tunable settings — edit here instead of Python files |
+| `start.ps1` | One-click launcher for Windows (opens relay + agent) |
+| `agent.log` | JSON-lines tick log written by the agent (gitignored) |
 
 ---
 
@@ -204,7 +221,8 @@ In `bridge.user.js`:
 
 ## Limitations & Known Issues
 
-- The agent plays Phase 1 and Phase 2 well. Phase 3 (space exploration, probe design) is not yet fully guided.
+- Phase 1 and Phase 2 are well-covered. Phase 3 probe design actions are implemented (all 8 probe stats wired) but strategic guidance is still being refined — this is the active development area.
+- The investment system (Phase 2, after Algorithmic Trading) is fully implemented: Deposit/Withdraw flow, risk strategy select, investment engine upgrade.
 - Marketing upgrades require sufficient funds buffer — early game marketing may lag slightly.
 - The LLM occasionally produces invalid actions; these are caught and substituted with `wait`.
 - If Ollama is slow to respond, the agent falls back to `wait` for that tick.
@@ -268,6 +286,28 @@ It's a work in progress. But it works.
 
 ---
 
+## Version History
+
+**v1.9 (current)**
+- Action feedback loop: browser reports success/failure of every LLM action back to the agent; the agent includes the result in its next prompt
+- Live web dashboard at `http://localhost:5000` — real-time state, tick history, thoughts, action results; no terminal required to observe a run
+- In-game badge expanded to show phase, clip count, last action, and LLM reasoning in real time
+- `config.json` — all tunable parameters in one file, no Python editing needed
+- `start.ps1` — one-click Windows launcher
+- Per-tick JSON log (`agent.log`) for post-run analysis
+- LLM response time shown in terminal (`[ACT] raise_price  (312ms)`)
+- Investment system fully implemented: Deposit/Withdraw, risk strategy (low/med/hi), investment engine upgrade — all using verified game DOM IDs
+- Phase 3 probe design fully wired: all 8 probe stats (Speed, Nav, Rep, Haz, Fac, Harv, Wire, Combat) with raise/lower actions and strategic guidance in the system prompt
+- Phase 3 and investment state fields added: yomi, honor, portfolio value, colonization %, probe stats, drifter count, power performance
+- `num_predict` increased 120 → 180 to reduce LLM response truncation
+
+**v1.0 – v1.8**
+- v1.0: zero paperclips produced (LLM hallucinated every action)
+- Progressive fixes: wire bankruptcy recovery, trust allocation, project priority queue, MegaClipper automation, Phase 2 computational resource management
+- Best pre-v1.9 run: 1,600,000+ paperclips, zero bankruptcies, zero human UI interaction
+
+---
+
 ## Where do we go from here?
 
-Next steps are to get local models involved in a code review process, after that, we can have models compete in the game.
+Next steps: refine Phase 3 probe strategy guidance, then get local models involved in a code review process, after that, models compete in the game.

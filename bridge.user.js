@@ -6,8 +6,6 @@
 // @author       paperclips-agent
 // @match        https://www.decisionproblem.com/paperclips/*
 // @match        http://www.decisionproblem.com/paperclips/*
-// @match        https://browsercraft.com/play/universal-paperclips*
-// @match        http://browsercraft.com/play/universal-paperclips*
 // @grant        GM_xmlhttpRequest
 // @connect      localhost
 // ==/UserScript==
@@ -47,26 +45,72 @@
     // ── Wire detection ────────────────────────────────────────────────────────
     // Phase 1: wire is in span#wire (inside manufacturingDiv)
     // Phase 3: wire is in span#nanoWire (wire drone production)
-    // transWire is used in space phase
 
     function getWire() {
-        // prefer nanoWire in phase 3, fall back to phase 1 wire
         const nano = getNum('nanoWire', -1);
         if (nano >= 0 && isVisible('wireProductionDiv')) return nano;
         return getNum('wire', 0);
     }
 
     function wireBuyerActive() {
-        // WireBuyer project toggles a button; if div is visible and status is ON, wire is auto-bought
         const status = getText('wireBuyerStatus');
         return isVisible('wireBuyerDiv') && status === 'ON';
+    }
+
+    // ── Investment state ──────────────────────────────────────────────────────
+    // Appears in Phase 2 after Algorithmic Trading is purchased.
+    // The investmentEngine div contains:
+    //   - #investStrat select (low/med/hi)
+    //   - #btnInvest (Deposit), #btnWithdraw
+    //   - #portValue (total = bankroll + stocks)
+    //   - #investmentBankroll (cash in account)
+    //   - #secValue (stocks value)
+    //   - #investmentLevel, #investUpgradeCost (Yomi cost to upgrade)
+
+    function getInvestmentState() {
+        if (!isVisible('investmentEngine')) return {};
+        const stratEl = document.getElementById('investStrat');
+        return {
+            portValue:         getText('portValue'),
+            investBankroll:    getText('investmentBankroll'),
+            investStocks:      getText('secValue'),
+            investLevel:       getText('investmentLevel'),
+            investStrategy:    stratEl ? stratEl.value : null,
+            investUpgradeCost: getText('investUpgradeCost'),
+        };
+    }
+
+    // ── Phase 3 state ─────────────────────────────────────────────────────────
+    // Probe design and space exploration metrics.
+    // Probe trust budget is split across 8 stats (Speed, Nav, Rep, Haz, Fac, Harv, Wire, Combat).
+
+    function getPhase3State() {
+        if (!isVisible('spaceDiv')) return {};
+        return {
+            colonized:      getText('colonizedDisplay'),
+            probeTotal:     getText('probesTotalDisplay'),
+            probeTrust:     getText('probeTrustUsedDisplay') + '/' + getText('probeTrustDisplay'),
+            drifters:       getText('drifterCount'),
+            probeSpeed:     getText('probeSpeedDisplay'),
+            probeNav:       getText('probeNavDisplay'),
+            probeRep:       getText('probeRepDisplay'),
+            probeHaz:       getText('probeHazDisplay'),
+            probeFac:       getText('probeFacDisplay'),
+            probeHarv:      getText('probeHarvDisplay'),
+            probeWire:      getText('probeWireDisplay'),
+            probeCombat:    getText('probeCombatDisplay'),
+            performance:    getText('performance'),
+        };
     }
 
     // ── State extraction ──────────────────────────────────────────────────────
 
     function getState() {
-        const wire = getWire();
-        return {
+        const wire   = getWire();
+        const invest = getInvestmentState();
+        const p3     = getPhase3State();
+
+        return Object.assign({
             clips:             getText('clips'),
             unsoldClips:       getText('unsoldClips'),
             funds:             getText('funds'),
@@ -87,29 +131,28 @@
             processors:        getText('processors'),
             operations:        getText('operations') + ' / ' + getText('maxOps'),
             creativity:        getText('creativity'),
+            yomi:              getText('yomiDisplay'),
+            honor:             getText('honorDisplay'),
             wireBuyerOn:       wireBuyerActive(),
             phase:             getPhase(),
             availableProjects: getProjects(),
-        };
+        }, invest, p3);
     }
 
     function getPhase() {
-        // Phase 2: compDiv visible; Phase 3: spaceDiv visible
-        if (isVisible('spaceDiv'))   return 3;
-        if (isVisible('compDiv'))    return 2;
+        if (isVisible('spaceDiv'))  return 3;
+        if (isVisible('compDiv'))   return 2;
         return 1;
     }
 
     function getProjects() {
         const projects = [];
         document.querySelectorAll('#projectListTop button, #projectsDiv button').forEach(btn => {
-            if (btn.offsetParent === null) return;     // hidden
-            if (btn.disabled) return;                  // disabled
-            // Greyed-out projects have reduced opacity or a 'greyed' class
-            const style = window.getComputedStyle(btn);
-            const opacity = parseFloat(style.opacity);
-            if (opacity < 0.6) return;                 // visually greyed out
-            projects.push(btn.innerText.trim().replace(/\n/g,' '));
+            if (btn.offsetParent === null) return;
+            if (btn.disabled) return;
+            const opacity = parseFloat(window.getComputedStyle(btn).opacity);
+            if (opacity < 0.6) return;
+            projects.push(btn.innerText.trim().replace(/\n/g, ' '));
         });
         return projects.join(' | ') || 'none';
     }
@@ -118,12 +161,12 @@
 
     function getProjectCost(btn) {
         const text = btn.innerText;
-        const opsM   = text.match(/([\d,]+)\s*ops/i);
-        const crtM   = text.match(/([\d,]+)\s*creat/i);
-        const trstM  = text.match(/\(\s*(\d+)\s*Trust\s*\)/i);
-        if (opsM)  return { type: 'ops',       amount: parseInt(opsM[1].replace(/,/g,'')) };
-        if (crtM)  return { type: 'creativity', amount: parseInt(crtM[1].replace(/,/g,'')) };
-        if (trstM) return { type: 'trust',      amount: parseInt(trstM[1]) };
+        const opsM  = text.match(/([\d,]+)\s*ops/i);
+        const crtM  = text.match(/([\d,]+)\s*creat/i);
+        const trstM = text.match(/\(\s*(\d+)\s*Trust\s*\)/i);
+        if (opsM)  return { type: 'ops',        amount: parseInt(opsM[1].replace(/,/g,'')) };
+        if (crtM)  return { type: 'creativity',  amount: parseInt(crtM[1].replace(/,/g,'')) };
+        if (trstM) return { type: 'trust',       amount: parseInt(trstM[1]) };
         return null;
     }
 
@@ -144,13 +187,13 @@
     // ── Auto-spend on projects ────────────────────────────────────────────────
 
     const PROJECT_PRIORITY = [
-        // ops-cost — production critical, in order of priority
-        'improved autoclippers',     // 750 ops — buy immediately when available
-        'wirebuyer',                 // 7,000 ops — eliminates wire crises
-        'improved wire extrusion',   // 1,750 ops — 50% more wire per spool
-        'optimized wire extrusion',  // 3,500 ops — 75% more wire per spool
-        'even better autoclippers',  // 2,500 ops — 50% production boost
-        'hadwiger clip diagrams',    // 6,000 ops — 500% autoclipper boost
+        // ops-cost — production critical
+        'improved autoclippers',
+        'wirebuyer',
+        'improved wire extrusion',
+        'optimized wire extrusion',
+        'even better autoclippers',
+        'hadwiger clip diagrams',
         'hypno harmonics',
         'new slogan',
         'catchy jingle',
@@ -162,7 +205,7 @@
         'creativity',
         'neural net optimizer',
         'optimized autoclipper',
-        // trust-cost — buy freely, trust regenerates
+        // trust-cost
         'limerick',
         'lexical processing',
         'combinatory harmonics',
@@ -182,8 +225,8 @@
     function autoSpendOnProjects() {
         if (Date.now() - lastProjectClick < 1500) return;
 
-        const opsText = getText('operations') || '';
-        const opsParts = opsText.split('/').map(s => parseInt(s.replace(/,/g,'').trim()));
+        const opsText      = getText('operations') || '';
+        const opsParts     = opsText.split('/').map(s => parseInt(s.replace(/,/g,'').trim()));
         const currentOps   = isNaN(opsParts[0]) ? 0 : opsParts[0];
         const currentCrt   = getNum('creativity');
         const currentTrust = parseInt(getText('trust') || '0');
@@ -233,11 +276,11 @@
 
     function autoMegaClippers() {
         if (!isVisible('megaClipperDiv')) return;
-        const funds        = getNum('funds');
-        const wire         = getWire();
-        const wireCost     = getNum('wireCost', 9999);
-        const megaCost     = getNum('megaClipperCost', 9999);
-        const spoolsLeft   = Math.floor((funds - megaCost) / wireCost);
+        const funds      = getNum('funds');
+        const wire       = getWire();
+        const wireCost   = getNum('wireCost', 9999);
+        const megaCost   = getNum('megaClipperCost', 9999);
+        const spoolsLeft = Math.floor((funds - megaCost) / wireCost);
         if (wire > 1000 && spoolsLeft >= 3) {
             clickBtn('btnMakeMegaClipper');
         }
@@ -254,23 +297,19 @@
         const wireCost     = getNum('wireCost',    9999);
         const autoclippers = getNum('clipmakerLevel2');
 
-        // EMERGENCY: wire gone and broke
         if (wire <= 0 && funds < wireCost && !wireBuyerActive()) {
             handleEmergency();
             return;
         }
 
-        // 1. Buy wire — skip if WireBuyer is handling it
         if (!wireBuyerActive() && wire < 1000 && funds >= wireCost) {
-            if (clickBtn('btnBuyWire') && wire < 100) return; // critically low
+            if (clickBtn('btnBuyWire') && wire < 100) return;
         }
 
-        // 2. Manual clicking in early game
         if (autoclippers < 5) {
             clickBtn('btnMakePaperclip');
         }
 
-        // 3. Buy AutoClipper when safe
         const spoolsAfter = Math.floor((funds - clipperCost) / wireCost);
         if (wire > 1000 && spoolsAfter >= 3) {
             if (clickBtn('btnMakeClipper')) {
@@ -278,7 +317,6 @@
             }
         }
 
-        // 4. Price management
         if (unsold > 50) {
             clickBtn('btnLowerPrice');
         } else if (unsold < 10 && demand > 100) {
@@ -290,55 +328,186 @@
 
     function executeAction(action, args) {
         console.log(`[AGENT] LLM: ${action}`, args || '');
+        let success = false;
+        let note    = '';
+
         switch (action) {
-            case 'lower_price':        return clickBtn('btnLowerPrice');
-            case 'raise_price':        return clickBtn('btnRaisePrice');
-            case 'buy_wire':           return clickBtn('btnBuyWire');
-            case 'buy_autoclipper':    return clickBtn('btnMakeClipper');
-            case 'buy_megaclipper':    return clickBtn('btnMakeMegaClipper');
-            case 'buy_marketing':      return clickBtn('btnExpandMarketing');
-            case 'make_paperclip':     return clickBtn('btnMakePaperclip');
-            case 'add_processor':      return clickBtn('btnAddProc');
-            case 'add_memory':         return clickBtn('btnAddMem');
+
+            // ── Basic actions ─────────────────────────────────────────────────
+            case 'lower_price':      success = clickBtn('btnLowerPrice');       break;
+            case 'raise_price':      success = clickBtn('btnRaisePrice');       break;
+            case 'buy_wire':         success = clickBtn('btnBuyWire');          break;
+            case 'buy_autoclipper':  success = clickBtn('btnMakeClipper');      break;
+            case 'buy_megaclipper':  success = clickBtn('btnMakeMegaClipper');  break;
+            case 'buy_marketing':    success = clickBtn('btnExpandMarketing');  break;
+            case 'make_paperclip':   success = clickBtn('btnMakePaperclip');    break;
+            case 'add_processor':    success = clickBtn('btnAddProc');          break;
+            case 'add_memory':       success = clickBtn('btnAddMem');           break;
+
+            // ── Project purchase ──────────────────────────────────────────────
             case 'buy_project': {
-                if (!args || !args.name) return false;
-                const name = args.name.toLowerCase();
-                const btns = document.querySelectorAll('#projectListTop button, #projectsDiv button');
+                if (!args || !args.name) { note = 'no project name given'; break; }
+                const needle = args.name.toLowerCase();
+                const btns   = document.querySelectorAll('#projectListTop button, #projectsDiv button');
                 for (const btn of btns) {
-                    if (btn.innerText.toLowerCase().includes(name) && btn.offsetParent !== null) {
+                    if (btn.innerText.toLowerCase().includes(needle) && btn.offsetParent !== null) {
                         btn.click();
-                        return true;
+                        success = true;
+                        note    = btn.innerText.trim().split('\n')[0];
+                        break;
                     }
                 }
-                console.warn(`[AGENT] Project not found: ${args.name}`);
-                return false;
+                if (!success) {
+                    note = `not found: ${args.name}`;
+                    console.warn(`[AGENT] Project not found: ${args.name}`);
+                }
+                break;
             }
+
+            // ── Investment actions ────────────────────────────────────────────
+            // investmentEngine div contains:
+            //   #investStrat select (low/med/hi)
+            //   #btnInvest (Deposit), #btnWithdraw
+            //   #btnImproveInvestments (upgrade, costs Yomi)
+
+            case 'invest_deposit': {
+                success = clickBtn('btnInvest');
+                note    = success ? 'deposited funds into investment' : 'btnInvest not visible';
+                break;
+            }
+            case 'invest_withdraw': {
+                success = clickBtn('btnWithdraw');
+                note    = success ? 'withdrew from investment' : 'btnWithdraw not visible';
+                break;
+            }
+            case 'set_invest_low':
+            case 'set_invest_med':
+            case 'set_invest_hi': {
+                const el = document.getElementById('investStrat');
+                if (!el || el.offsetParent === null) { note = 'investStrat not visible'; break; }
+                const valMap = { 'set_invest_low': 'low', 'set_invest_med': 'med', 'set_invest_hi': 'hi' };
+                el.value = valMap[action];
+                success  = true;
+                note     = `risk strategy set to ${valMap[action]}`;
+                break;
+            }
+            case 'upgrade_investment': {
+                success = clickBtn('btnImproveInvestments');
+                note    = success ? 'investment engine upgraded' : 'btnImproveInvestments not visible';
+                break;
+            }
+
+            // ── Phase 3: Probe design ──────────────────────────────────────────
+            // Each stat has a raise (>) and lower (<) button.
+            // Total trust points across all 8 stats = probeTrustDisplay.
+            // increase_probe_trust costs Yomi (probeTrustCostDisplay).
+
+            case 'raise_probe_speed':   success = clickBtn('btnRaiseProbeSpeed');   break;
+            case 'lower_probe_speed':   success = clickBtn('btnLowerProbeSpeed');   break;
+            case 'raise_probe_nav':     success = clickBtn('btnRaiseProbeNav');     break;
+            case 'lower_probe_nav':     success = clickBtn('btnLowerProbeNav');     break;
+            case 'raise_probe_rep':     success = clickBtn('btnRaiseProbeRep');     break;
+            case 'lower_probe_rep':     success = clickBtn('btnLowerProbeRep');     break;
+            case 'raise_probe_haz':     success = clickBtn('btnRaiseProbeHaz');     break;
+            case 'lower_probe_haz':     success = clickBtn('btnLowerProbeHaz');     break;
+            case 'raise_probe_fac':     success = clickBtn('btnRaiseProbeFac');     break;
+            case 'lower_probe_fac':     success = clickBtn('btnLowerProbeFac');     break;
+            case 'raise_probe_harv':    success = clickBtn('btnRaiseProbeHarv');    break;
+            case 'lower_probe_harv':    success = clickBtn('btnLowerProbeHarv');    break;
+            case 'raise_probe_wire':    success = clickBtn('btnRaiseProbeWire');    break;
+            case 'lower_probe_wire':    success = clickBtn('btnLowerProbeWire');    break;
+            case 'raise_probe_combat':  success = clickBtn('btnRaiseProbeCombat');  break;
+            case 'lower_probe_combat':  success = clickBtn('btnLowerProbeCombat');  break;
+            case 'increase_probe_trust': success = clickBtn('btnIncreaseProbeTrust'); break;
+
             case 'wait':
             default:
-                return true;
+                success = true;
+                break;
         }
+
+        if (action !== 'wait') {
+            postResult(action, success, note);
+        }
+        return success;
     }
 
     // ── Relay communication ───────────────────────────────────────────────────
 
-    function postState() {
+    function postState(stateData) {
         GM_xmlhttpRequest({
-            method: 'POST',
-            url: `${RELAY}/state`,
+            method:  'POST',
+            url:     `${RELAY}/state`,
             headers: { 'Content-Type': 'application/json' },
-            data: JSON.stringify(getState()),
+            data:    JSON.stringify(stateData),
             onerror: () => console.warn('[AGENT] relay state POST failed'),
         });
     }
 
+    function postResult(action, success, note) {
+        GM_xmlhttpRequest({
+            method:  'POST',
+            url:     `${RELAY}/result`,
+            headers: { 'Content-Type': 'application/json' },
+            data:    JSON.stringify({ action, success: !!success, note: note || '' }),
+            onerror: () => console.warn('[AGENT] relay result POST failed'),
+        });
+    }
+
+    // ── Badge ─────────────────────────────────────────────────────────────────
+
+    let badgeEl     = null;
+    let lastAction  = '—';
+    let lastThought = '';
+    let tickCount   = 0;
+
+    function createBadge() {
+        badgeEl = document.createElement('div');
+        badgeEl.id = 'agent-badge';
+        badgeEl.style.cssText = `
+            position: fixed; bottom: 10px; right: 10px;
+            background: #0d1117; color: #c9d1d9;
+            font-family: monospace; font-size: 11px; line-height: 1.6;
+            padding: 10px 14px; border-radius: 6px;
+            border: 1px solid #30363d; z-index: 9999;
+            pointer-events: none; min-width: 220px; max-width: 300px;
+        `;
+        document.body.appendChild(badgeEl);
+    }
+
+    function updateBadge(state) {
+        if (!badgeEl) return;
+        const phase    = state ? state.phase    : '?';
+        const clips    = state ? state.clips    : '—';
+        const funds    = state ? state.funds    : '—';
+        const wire     = state ? state.wire     : '—';
+        const wireWarn = (wire !== '—' && parseFloat(wire) < 100) ? ' ⚠' : '';
+        const thought  = lastThought
+            ? lastThought.substring(0, 55) + (lastThought.length > 55 ? '…' : '')
+            : '—';
+        badgeEl.innerHTML =
+            `<span style="color:#58a6ff;font-weight:bold">🤖 Agent</span>` +
+            `<span style="color:#8b949e;float:right">Ph ${phase} · #${tickCount}</span><br>` +
+            `<span style="color:#8b949e">clips </span> ${clips}<br>` +
+            `<span style="color:#8b949e">funds </span> ${funds}<br>` +
+            `<span style="color:#8b949e">wire  </span> ${wire}${wireWarn}<br>` +
+            `<span style="color:#8b949e">act   </span> <span style="color:#3fb950">${lastAction}</span><br>` +
+            `<span style="color:#8b949e">why   </span> <span style="color:#8b949e;font-size:10px">${thought}</span>`;
+    }
+
+    // ── Action polling ────────────────────────────────────────────────────────
+
     function pollAction() {
         GM_xmlhttpRequest({
             method: 'GET',
-            url: `${RELAY}/action`,
+            url:    `${RELAY}/action`,
             onload: (resp) => {
                 try {
                     const data = JSON.parse(resp.responseText);
                     if (data && data.action && data.action !== 'wait') {
+                        lastAction  = data.action + (data.args && data.args.name ? ': ' + data.args.name : '');
+                        lastThought = data.thought || '';
+                        tickCount++;
                         executeAction(data.action, data.args);
                     }
                 } catch (e) {
@@ -353,24 +522,21 @@
 
     function init() {
         console.log('[AGENT] Universal Paperclips bridge v1.9 active');
+
         setInterval(runFastRules,        50);
         setInterval(autoSpendOnProjects, 500);
         setInterval(autoMarketing,       1000);
         setInterval(autoMegaClippers,    1000);
-        setInterval(postState,           STATE_MS);
         setInterval(pollAction,          ACTION_MS);
 
-        const badge = document.createElement('div');
-        badge.innerText = '🤖 Agent Active';
-        badge.style.cssText = `
-            position: fixed; bottom: 10px; right: 10px;
-            background: #1a1a2e; color: #00ff88;
-            font-family: monospace; font-size: 12px;
-            padding: 6px 12px; border-radius: 4px;
-            border: 1px solid #00ff88; z-index: 9999;
-            pointer-events: none;
-        `;
-        document.body.appendChild(badge);
+        // Combined state push + badge update on the same interval
+        setInterval(() => {
+            const state = getState();
+            postState(state);
+            updateBadge(state);
+        }, STATE_MS);
+
+        createBadge();
     }
 
     window.addEventListener('load', () => setTimeout(init, 1000));
