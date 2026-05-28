@@ -274,7 +274,11 @@
         const wire   = getWire();
         const unsold = getNum('unsoldClips');
         const cost   = parseFloat((getText('adCost') || '9999').replace(/[^0-9.]/g,''));
-        if (funds > cost * 1.2 && wire > 200 && unsold < 40) {
+        // Buy marketing when affordable AND either:
+        //   - demand is near its ceiling (>= 400%) — more marketing raises the cap
+        //   - OR inventory is still manageable (early game behaviour)
+        // Do NOT block marketing just because unsold is high — that's when you need it most.
+        if (funds > cost * 1.5 && wire > 200 && (demand >= 400 || unsold < 40)) {
             if (clickBtn('btnExpandMarketing')) {
                 lastMarketingClick = Date.now();
                 console.log(`[AGENT] Marketing upgraded (cost was $${cost})`);
@@ -327,12 +331,15 @@
             }
         }
 
-        // Demand check MUST come first — extreme demand overrides inventory level.
-        // (At 570 clips/sec, having 51 unsold is ~0.1 seconds of production — not a glut.)
-        if (demand > 500) {
-            // Demand is very high — raise price even if unsold seems elevated
+        // Price management — demand check comes first.
+        // Note: demand >= 500 (not > 500) to catch the exact-ceiling case.
+        if (demand >= 500) {
+            // At or above demand ceiling — raise price to generate more revenue
+            // and signal to buy more marketing (which raises the ceiling further).
             clickBtn('btnRaisePrice');
-        } else if (unsold > 50) {
+        } else if (unsold > 50 && demand < 200) {
+            // Inventory piling up AND demand genuinely weak — lower price to stimulate sales.
+            // Do NOT lower price just because unsold is high if demand is already healthy.
             clickBtn('btnLowerPrice');
         } else if (unsold < 10 && demand > 100) {
             clickBtn('btnRaisePrice');

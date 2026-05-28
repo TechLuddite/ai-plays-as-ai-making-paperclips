@@ -424,7 +424,7 @@ def run():
             invest_bankroll  = safe_float(state.get('investBankroll'), 0)
             invest_strategy  = str(state.get('investStrategy', '')).lower()
             funds_now        = safe_float(state.get('funds'), 0)
-            if invest_bankroll < 5 and funds_now > 50:
+            if invest_bankroll < 5 and funds_now > 500:
                 if invest_strategy != 'hi':
                     inv_reason = f"investment idle — switching to High Risk (funds=${funds_now:.0f})"
                     print(f"[!!!] INVEST OVERRIDE: {inv_reason}")
