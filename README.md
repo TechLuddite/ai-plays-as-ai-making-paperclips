@@ -221,11 +221,32 @@ Browser-side constants are at the top of `bridge.user.js`:
 
 ## Limitations & Known Issues
 
-- Phase 1 and Phase 2 are well-covered. Phase 3 probe design actions are implemented (all 8 probe stats wired) but strategic guidance is still being refined — this is the active development area.
-- The investment system (Phase 2, after Algorithmic Trading) is fully implemented: Deposit/Withdraw flow, risk strategy select, investment engine upgrade.
-- Marketing upgrades require sufficient funds buffer — early game marketing may lag slightly.
+**Active (confirmed in live runs):**
+- **Quantum Computing not automated** — The Compute button (`btnQcompute`) is not being
+  clicked automatically. In Phase 2, Quantum Computing converts chip charge into ops — it
+  should be fired as a fast rule on every tick when the panel is visible. Currently zero
+  automation for this mechanic. Fix planned for v2.
+- **AutoTourney never starts** — Strategic Modeling and AutoTourney actions are wired but
+  the LLM doesn't reliably choose them. After an overnight run, Yomi was still 0. A hard
+  override (same pattern as trust/invest) is needed to ensure it's enabled automatically.
+- **Marketing underinvested in Phase 2** — The auto-buy buffer only checks available cash.
+  When funds are being deposited to investments, available cash stays low and marketing
+  upgrades stall — even with millions in the investment portfolio. Marketing Level 3 at $400
+  is absurd when total wealth is $77M+. Fix planned for v2.
+- **Investment risk drifts to Low** — The system sets High Risk when the bankroll is first
+  funded but doesn't re-check over time. After an overnight run the strategy had reverted
+  to Low Risk. Fix planned for v2.
+- **Price strategy** — Current rules keep demand near 500% (the ceiling). A better
+  approach may be targeting ~100% demand at higher price (more revenue per clip, slower
+  inventory buildup). Under investigation for v2.
+
+**Stable / minor:**
+- Phase 3 probe design actions are fully wired but strategic guidance is still being
+  refined — this is the next active development area.
 - The LLM occasionally produces invalid actions; these are caught and substituted with `wait`.
 - If Ollama is slow to respond, the agent falls back to `wait` for that tick.
+- `start.ps1` has a display quirk (relay and agent both appear in same window). Known issue,
+  deferred to v2. Use the manual two-terminal start as the reliable alternative.
 
 ---
 
@@ -288,18 +309,29 @@ It's a work in progress. But it works.
 
 ## Version History
 
-**v1.9 (current)**
-- Action feedback loop: browser reports success/failure of every LLM action back to the agent; the agent includes the result in its next prompt
-- Live web dashboard at `http://localhost:5000` — real-time state, tick history, thoughts, action results; no terminal required to observe a run
-- In-game badge expanded to show phase, clip count, last action, and LLM reasoning in real time
-- `config.json` — all tunable parameters in one file, no Python editing needed
-- `start.ps1` — one-click Windows launcher
-- Per-tick JSON log (`agent.log`) for post-run analysis
-- LLM response time shown in terminal (`[ACT] raise_price  (312ms)`)
-- Investment system fully implemented: Deposit/Withdraw, risk strategy (low/med/hi), investment engine upgrade — all using verified game DOM IDs
-- Phase 3 probe design fully wired: all 8 probe stats (Speed, Nav, Rep, Haz, Fac, Harv, Wire, Combat) with raise/lower actions and strategic guidance in the system prompt
-- Phase 3 and investment state fields added: yomi, honor, portfolio value, colonization %, probe stats, drifter count, power performance
-- `num_predict` increased 120 → 180 to reduce LLM response truncation
+**v1.9.1 + patches (current)**
+
+*v1.9.1 bug fixes:*
+- Fixed price logic — demand check now takes priority over inventory count (was driving price to $0.01 at 17,000%+ demand)
+- Fixed trust override — was firing every tick even when trust was fully allocated, blocking the LLM entirely
+- Added LLM trust guard — hard block prevents add_memory/add_processor when trust is maxed
+- Added investment hard override — automatically sets High Risk and deposits when investment system becomes active
+- Rewrote system prompt — trust removed from LLM's job; investments are the #1 LLM priority in Phase 2
+- Added Microlattice Shapecasting to auto-buy queue
+
+*Patches after v1.9.1 (on main, not yet tagged):*
+- Fixed `set_invest_hi` — must dispatch `change` event or the game ignores the value change
+- Fixed 'hi' vs 'high' mismatch in override guard and system prompt
+- Added guard to block invest actions before Algorithmic Trading is purchased
+- Added new game detection — clears LLM history when browser is reset mid-session
+- Added missing projects to auto-buy queue: spectral froth annealment, quantum foam annealment, megaclippers (project), photonic chip, new strategy: a100, hypnodrones
+- Wired AutoTourney: toggle_auto_tourney, set_strategy_random, run_tournament actions + state fields
+- Fixed marketing auto-buy — now fires when demand >= 400% regardless of unsold inventory level
+- Fixed price boundary — changed demand > 500 to demand >= 500 (was missing exactly-500% case)
+- Smarter price lowering — only lowers when demand < 200% (not when demand is healthy)
+
+**v1.9**
+- Action feedback loop, live dashboard, Phase 2/3 full wiring, config.json, start.ps1
 
 **v1.0 – v1.8**
 - v1.0: zero paperclips produced (LLM hallucinated every action)

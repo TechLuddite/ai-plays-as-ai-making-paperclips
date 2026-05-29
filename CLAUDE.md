@@ -62,34 +62,74 @@ In `bridge.user.js` (constants at top of file):
 - `ACTION_MS` — action poll interval in ms (default: `500`)
 
 ## Current Status
-- Phase 1 and Phase 2: working well
-- Phase 3 (space exploration, probe design): not yet fully guided — active development area
-- Best run: 1,600,000+ paperclips, zero bankruptcies, zero human UI interaction
+- Phase 1: working well
+- Phase 2: functional but with known income/marketing issues (see Known Issues)
+- Phase 3 (space exploration, probe design): actions are wired, strategy guidance is thin
+- Best run: ~168M paperclips (Phase 2, overnight), $77M investments, zero bankruptcies
 
 ## Known Issues
+
+### MAJOR — Active problems confirmed in live runs
+- **Quantum Computing not automated**: `btnQcompute` is never clicked. The Compute button
+  should be fired on every fast-rule tick when `compDiv` is visible — it's free, safe,
+  and converts chip charge into ops. Add to `autoQuantumCompute()` in bridge.user.js.
+- **AutoTourney never runs**: Yomi = 0 after an overnight run. Actions exist
+  (toggle_auto_tourney, set_strategy_random) but the LLM never chooses them.
+  Fix: add a hard override in agent.py — if autoTourneyOn is in state and not "ON",
+  fire the setup actions before the LLM runs. Same pattern as trust/invest overrides.
+- **Marketing severely underinvested**: Marketing stayed Level 3 despite $77M in investments.
+  The auto-buy buffer only checks available cash. When cash is being deposited to investments,
+  available funds stay low and marketing never fires. Fix: use total wealth
+  (funds + investBankroll + investStocks) as the buffer signal, or auto-withdraw to fund marketing.
+- **Price strategy needs rethinking**: Current rules target demand near 500% (ceiling).
+  Better strategy may be to price for ~100% demand (higher price, fewer clips sold but
+  more revenue per clip, inventory clears over time). Needs experimentation.
+- **Investment risk drifts back to Low**: After being set to High Risk, overnight runs show
+  Low Risk. The override only sets High Risk once (when bankroll is empty). Fix: periodic
+  re-check that resets strategy if it drifts from 'hi'.
+- **Duplicate numbering in SYSTEM_PROMPT**: Both "PROJECTS" and "PHASE 3" are labeled
+  item 3. Fix by renumbering to 1-5.
+
+### MINOR
 - LLM occasionally produces invalid actions — caught and substituted with `wait`
 - If Ollama is slow, agent falls back to `wait` for that tick
-- Early game marketing may lag slightly during low-funds periods
-- Phase 2 investments: fully wired. The system uses `btnInvest` (Deposit), `btnWithdraw`,
-  and `#investStrat` select (low/med/hi). IDs confirmed from game HTML source.
+- Xavier Re-initialization appears twice in project list (game quirk or selector issue)
+- start.ps1 display quirk (relay + agent both in same terminal) — deferred to v2
+
+## Key DOM IDs (confirmed from game HTML source)
+- Investments: `btnInvest` (Deposit), `btnWithdraw`, `#investStrat` (low/med/hi select),
+  `investmentBankroll`, `secValue`, `portValue`, `btnImproveInvestments`
+- Quantum Computing: `btnQcompute`, `compDiv`
+- AutoTourney: `btnToggleAutoTourney`, `autoTourneyStatus`, `stratPicker`, `btnRunTournament`
+- Trust: `btnAddProc`, `btnAddMem`, `trust`, `processors`, `memory`
+- Phase 3 probes: `btnRaise/LowerProbeSpeed/Nav/Rep/Haz/Fac/Harv/Wire/Combat`,
+  `btnIncreaseProbeTrust`, `probeTrustCostDisplay`
 
 ## Development Conventions
 - Terminal output should remain human-readable (see README for format)
 - ReAct pattern: every LLM response structured as `Thought:` then `Action:`
 - Validate all LLM output before sending — never pass hallucinated actions to browser
 - No persistent memory — rolling window only; keep it stateless by design
+- Hard overrides fire before the LLM runs: emergency wire → trust → investments → AutoTourney
+- When adding new actions: update ACTIONS string, validate_action() set, AND bridge.user.js executeAction()
 
 ## Next Steps (Roadmap)
-1. Improve Phase 3 guidance (space/probe strategy)
-2. Local model code review integration
-3. Multi-model competition mode (models compete for paperclip count)
+1. AutoTourney hard override (Yomi = 0 overnight is a blocker)
+2. Quantum Computing automation (btnQcompute fast rule — trivial, high impact)
+3. Marketing buffer using total wealth instead of available cash
+4. Price strategy: target ~100% demand vs demand-ceiling chasing
+5. Investment risk drift fix (keep High Risk)
+6. Phase 3 probe strategy refinement
+7. Multi-action per tick (LLM outputs one decision per domain — discussed, scoped for v2)
+8. Fix start.ps1 display quirk
+9. Multi-model competition mode
 
 ## Notes for Claude Code
 - Do not modify the ReAct output format — the parser depends on exact `Thought:`/`Action:` structure
-- Test agent changes with Ollama running locally before committing
 - The userscript runs in a sandboxed browser context — keep it dependency-free
-- When adding new actions, update validation in `agent.py` AND the action list in `bridge.user.js`
+- When adding new actions, update: ACTIONS string, validate_action() set, bridge.user.js executeAction()
 - Owner is non-coder — prefer clear, well-commented code over clever one-liners
 - `agent.log` is gitignored; it's a JSON-lines file written by agent.py each tick
 - The dashboard at `http://localhost:5000` is the preferred way to observe a run — no terminal needed
-- Investment and Phase 3 probe action IDs are verified from the game HTML source
+- Hard overrides pattern: check condition → post_action() → log_tick() → sleep → continue
+- Safe float parsing: safe_float(state.get('key'), fallback) handles $, %, commas, empty strings
