@@ -393,6 +393,7 @@ def run():
     print(f"[{ts()}] ✓ Connected — starting agent loop\n")
 
     prev_clips = 0  # used to detect when a new game has been started
+    withdraw_cooldown = 0  # ticks remaining where deposit is suppressed after a withdraw
 
     while True:
         tick += 1
@@ -446,6 +447,7 @@ def run():
             invest_strategy = str(state.get('investStrategy', '')).strip().lower()
             invest_level    = safe_float(state.get('investLevel', '0'), 0)
             funds_now       = safe_float(state.get('funds'), 0)
+            marketing_cost  = safe_float(state.get('marketingCost'), 0)
             # High Risk is only beneficial at engine level 5+ (profit rate ≥ 0.55).
             # Below that, Med gives better risk-adjusted returns.
             target_strat = 'hi' if invest_level >= 5 else 'med'
@@ -459,13 +461,35 @@ def run():
                 time.sleep(LOOP_DELAY)
                 continue
 
-            # 2. Deposit when bankroll is empty, but leave a cash buffer for marketing.
+            # 2. Auto-withdraw when cash is too low to afford pending purchases.
+            # invest_deposit is all-or-nothing (moves ALL cash into the bankroll), so
+            # once deposited, the marketing fast rule and LLM have no cash to work with.
+            # Pattern: if funds < next marketing cost but bankroll is ample → withdraw.
+            # withdraw_cooldown then suppresses re-deposit for N ticks so the freed cash
+            # can actually be spent before it gets recycled back into the bankroll.
+            if (marketing_cost > 0
+                    and funds_now < marketing_cost
+                    and invest_bankroll > marketing_cost * 2):
+                wd_reason = (
+                    f"cash ${funds_now:.0f} below marketing cost ${marketing_cost:.0f} "
+                    f"— withdrawing bankroll ${invest_bankroll:.0f} to free up funds"
+                )
+                print(f"[!!!] WITHDRAW OVERRIDE: {wd_reason}")
+                post_action('invest_withdraw', thought=f"OVERRIDE: {wd_reason}")
+                log_tick(tick, state, wd_reason, 'invest_withdraw', 0, override="withdraw_for_needs")
+                withdraw_cooldown = 3   # suppress re-deposit for 3 ticks (~6s) so cash gets spent
+                time.sleep(LOOP_DELAY)
+                continue
+
+            # 3. Deposit when bankroll is empty, but leave a cash buffer for marketing.
             # invest_deposit moves ALL available funds into the bankroll, which would
             # leave the marketing fast rule unable to buy upgrades until next withdraw.
-            marketing_cost = safe_float(state.get('marketingCost'), 0)
-            # Keep at least 3× the next marketing upgrade cost in available cash.
+            # Skip deposit for a few ticks after a withdraw to let cash get spent first.
             min_cash = max(marketing_cost * 3.0, 500.0) if marketing_cost > 0 else 500.0
-            if invest_bankroll < 5 and funds_now > min_cash:
+            if withdraw_cooldown > 0:
+                withdraw_cooldown -= 1
+                # Suppress deposit — let fast rules and LLM spend the freed-up cash.
+            elif invest_bankroll < 5 and funds_now > min_cash:
                 inv_reason = (
                     f"investment idle — depositing "
                     f"(bankroll=${invest_bankroll:.0f}, funds=${funds_now:.0f}, "
