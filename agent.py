@@ -93,11 +93,14 @@ WHAT THE BROWSER HANDLES AUTOMATICALLY — never choose these:
 YOUR JOB — work through this priority list each tick:
 
 1. STRATEGIC MODELING / YOMI (when autoTourneyOn appears in state):
-   Yomi is earned from tournaments. It funds probe trust and investment upgrades.
+   IMPORTANT: tournaments COST ops and AWARD Yomi — they do NOT cost Yomi.
+   Yomi is the reward, not the price. AutoTourney runs tournaments automatically
+   whenever ops allow, earning Yomi passively. You never need to "spend" Yomi on
+   tournaments — Yomi is only spent on upgrade_investment and increase_probe_trust.
    AutoTourney is kept ON by a hard override — you do NOT need to toggle it.
    Your only jobs here:
    a. If no strategy is selected yet (first unlock): set_strategy_random
-   b. upgrade_investment when Yomi is available (see investUpgradeCost in state)
+   b. upgrade_investment when yomi >= investUpgradeCost — each level boosts returns
 
 2. INVESTMENTS — ONLY when portValue is visible in your state (it appears after buying
    Algorithmic Trading). If portValue is NOT in your state, the investment system does
@@ -254,9 +257,21 @@ def format_state(state):
 def check_trust_action(state):
     """
     Auto-balance processors and memory.
-    Target: memory ~2 ahead of processors.
+
+    Early-game cap: hold processors at ≤ PROC_CAP until memory hits MEM_UNLOCK.
+    Memory determines the ops ceiling (mem × 1000). Critical projects need
+    10,000–20,000 ops (Quantum Computing, Algorithmic Trading, Photonic Chip).
+    Rushing processors before the cap is high enough means fast regen against a
+    low ceiling — trust points that could raise the ceiling are wasted instead.
+
+    Once memory ≥ MEM_UNLOCK, switch to normal balance: keep memory ~2 ahead
+    of processors for a healthy regen/capacity ratio.
+
     Returns (action, reason) or (None, None).
     """
+    PROC_CAP      = 10   # max processors while memory is still building up
+    MEM_UNLOCK    = 20   # release cap once ops ceiling reaches 20,000
+
     trust = safe_float(state.get('trust'), 0)
     proc  = safe_float(state.get('processors'), 0)
     mem   = safe_float(state.get('memory'), 0)
@@ -264,6 +279,16 @@ def check_trust_action(state):
     available = trust - proc - mem
     if available < 1 or proc <= 0 or mem <= 0:
         return None, None
+
+    # Early-game cap: force memory growth until the ops ceiling is large enough
+    # for all core Stage 2 projects (Quantum Computing, Algorithmic Trading, Photonic Chip).
+    if proc >= PROC_CAP and mem < MEM_UNLOCK:
+        return 'add_memory', (
+            f"proc cap ({int(proc)}/{PROC_CAP}) — building ops ceiling to "
+            f"{MEM_UNLOCK * 1000:,} (memory {int(mem)}/{MEM_UNLOCK})"
+        )
+
+    # Normal balance: memory ~2 ahead of processors.
     if mem < proc - 1:
         return 'add_memory', f"memory ({int(mem)}) behind processors ({int(proc)}), expand cap"
     if proc < mem - 3:
