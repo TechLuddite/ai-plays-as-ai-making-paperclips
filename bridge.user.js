@@ -285,8 +285,12 @@
         //   - total wealth is 1.5× the cost (we can genuinely afford it)
         //   - available funds cover the cost (game requires cash, not bankroll)
         //   - wire is healthy (don't buy marketing while about to run out of wire)
-        //   - demand is near ceiling (>= 400%) OR inventory is still manageable
-        if (totalWealth > cost * 1.5 && funds >= cost && wire > 200 && (demand >= 400 || unsold < 40)) {
+        //   - demand is at least minimal (> 50%) — skip only if nobody wants clips at all.
+        //     The old condition (demand >= 400 || unsold < 40) was too restrictive:
+        //     in Stage 2 with large unsold inventory and 200% demand it never fired,
+        //     even though marketing is exactly what raises the demand ceiling to clear
+        //     that inventory.
+        if (totalWealth > cost * 1.5 && funds >= cost && wire > 200 && demand > 50) {
             if (clickBtn('btnExpandMarketing')) {
                 lastMarketingClick = Date.now();
                 console.log(`[AGENT] Marketing upgraded (cost=$${cost}, wealth=$${totalWealth.toFixed(0)})`);
