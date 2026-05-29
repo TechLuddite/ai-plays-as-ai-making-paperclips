@@ -391,17 +391,34 @@
             }
         }
 
-        // Price management — demand check comes first.
-        // Note: demand >= 500 (not > 500) to catch the exact-ceiling case.
+        // Price management — stage-aware.
+        //
+        // Stage 1 (investmentEngine not visible): revenue comes from selling clips.
+        //   Target demand: 200–500%. If inventory outpaces the market, lower price.
+        //   Cap: more than ~10 seconds of production sitting unsold = price too high.
+        //
+        // Stage 2+ (investmentEngine visible): primary income is the investment engine.
+        //   Clips need to ACCUMULATE — Stage 3 (Space Exploration) requires 5 octillion clips.
+        //   Do NOT lower price to clear inventory; let clips pile up for that goal.
+        //   Only intervene if demand collapses near zero, or raise price at ceiling.
+        const investActive = isVisible('investmentEngine');
+        const clipRate     = getNum('clipmakerRate', 0);
+        // ~10 seconds of production is a healthy Stage 1 buffer; above this, price is too high.
+        const inventoryCap = Math.max(1000, clipRate * 10);
+
         if (demand >= 500) {
-            // At or above demand ceiling — raise price to generate more revenue
-            // and signal to buy more marketing (which raises the ceiling further).
+            // Demand ceiling — always raise price (more revenue per clip, both stages)
             clickBtn('btnRaisePrice');
-        } else if (unsold > 50 && demand < 200) {
-            // Inventory piling up AND demand genuinely weak — lower price to stimulate sales.
-            // Do NOT lower price just because unsold is high if demand is already healthy.
+        } else if (!investActive && (demand < 200 || unsold > inventoryCap)) {
+            // Stage 1: demand below healthy floor OR inventory growing past buffer.
+            // Clips must sell to fund wire/autoclippers — lower price.
+            clickBtn('btnLowerPrice');
+        } else if (investActive && demand < 50) {
+            // Stage 2: investments handle revenue, but if demand nearly collapses
+            // lower price so some clips still sell (keeps funds from hitting zero).
             clickBtn('btnLowerPrice');
         } else if (unsold < 10 && demand > 100) {
+            // Inventory nearly empty and demand positive — raise price
             clickBtn('btnRaisePrice');
         }
     }
@@ -527,13 +544,14 @@
             case 'lower_probe_combat':  success = clickBtn('btnLowerProbeCombat');  break;
             case 'increase_probe_trust': success = clickBtn('btnIncreaseProbeTrust'); break;
 
+            case 'nothing':
             case 'wait':
             default:
                 success = true;
                 break;
         }
 
-        if (action !== 'wait') {
+        if (action !== 'wait' && action !== 'nothing') {
             postResult(action, success, note);
         }
         return success;

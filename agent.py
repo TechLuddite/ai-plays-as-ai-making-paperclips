@@ -106,13 +106,18 @@ YOUR JOB — work through this priority list each tick:
    (Strategy selection and AutoTourney toggling are handled by override — you never
    need to choose set_strategy_random or toggle_auto_tourney.)
 
-2. INVESTMENTS — ONLY when portValue is visible in your state (it appears after buying
-   Algorithmic Trading). If portValue is NOT in your state, the investment system does
-   not exist yet — do NOT choose any invest_* or set_invest_* action.
-   Deposits, withdrawals, and risk strategy are ALL managed by hard overrides —
-   you do NOT need to choose invest_deposit, invest_withdraw, or set_invest_* ever.
-   Your ONLY investment action: upgrade_investment — but ONLY when yomi >= investUpgradeCost.
-   If yomi is 0 or less than the listed upgrade cost, do NOT choose upgrade_investment.
+2. STAGE 2 CONTEXT (when portValue is visible — Algorithmic Trading purchased):
+   Revenue now comes from the investment engine, NOT clip sales. Large unsold clip counts
+   are CORRECT — you need 5 octillion clips to reach Stage 3 (Space Exploration).
+   Do NOT try to "fix" inventory by recommending price cuts — the fast rules handle pricing
+   and the Stage 2 goal is production volume, not clearing inventory.
+   Your Stage 2 priorities:
+   a) upgrade_investment when yomi >= investUpgradeCost
+   b) buy Stage 2 projects when affordable (they unlock production capacity)
+   c) Otherwise: nothing — let the overrides and fast rules manage everything else
+
+   INVESTMENTS: Deposits, withdrawals, and risk strategy are ALL managed by hard overrides.
+   Your ONLY investment action: upgrade_investment — ONLY when yomi >= investUpgradeCost.
 
 3. PROJECTS — only when a non-greyed clickable project appears that is NOT in the
    auto-buy list above (check availableProjects carefully — greyed = unavailable)
@@ -137,8 +142,13 @@ TRUST NOTE (informational only — do not act on it):
   trust is maxed out — skip to item 1 above.
 
 PRICING NOTE:
-  Fast rules handle routine price changes. Only intervene for edge cases the rules
-  miss — e.g. demand stuck at 0% with low unsold inventory.
+  Fast rules handle all routine price changes — do NOT use raise_price / lower_price
+  unless the fast rules are clearly broken.
+  - Stage 1 (no investments): rules target demand 200–500% and keep inventory < ~10s
+    of production. Intervene only if demand is truly stuck at 0%.
+  - Stage 2 (investments active): clips MUST ACCUMULATE. Stage 3 requires 5 octillion
+    clips — unsold inventory is not waste, it is the resource. Revenue comes from the
+    investment engine, not clip sales. Large unsold counts are correct in Stage 2.
   Wire: 1000+ inches is healthy.
 
 {ACTIONS}
@@ -265,8 +275,12 @@ def format_state(state):
             flag = " ⚠ BROKE"
         if k == 'demand' and fv > 150:
             flag = " ↑ consider raise_price"
-        if k == 'unsoldClips' and fv > 50:
-            flag = " ↓ consider lower_price"
+        if k == 'unsoldClips':
+            invest_active = bool(state.get('portValue', ''))
+            if invest_active:
+                flag = " ← accumulating for Stage 3 (5 octillion needed — this is correct)"
+            elif fv > 50:
+                flag = " ↓ consider lower_price"
         if k == 'trust' and fv > 0:
             available_trust = fv - proc - mem
             if available_trust >= 1:
