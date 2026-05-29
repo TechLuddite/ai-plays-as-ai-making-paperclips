@@ -295,16 +295,37 @@
     }
 
     // ── Auto-buy MegaClippers ─────────────────────────────────────────────────
+    // Rate-limited to one per 5 s to prevent a large cash balance (e.g. after an
+    // investment withdraw) from being spent entirely on clippers before marketing
+    // or projects get a chance to fire.
+    // Demand/inventory guard: don't add production capacity when we already have
+    // a large unsold backlog and demand is well below ceiling — more clips would
+    // just deepen the backlog with no revenue benefit.
+
+    let lastMegaClipperClick = 0;
 
     function autoMegaClippers() {
         if (!isVisible('megaClipperDiv')) return;
+        if (Date.now() - lastMegaClipperClick < 5000) return;
+
         const funds      = getNum('funds');
         const wire       = getWire();
         const wireCost   = getNum('wireCost', 9999);
         const megaCost   = getNum('megaClipperCost', 9999);
+        const unsold     = getNum('unsoldClips');
+        const demand     = getNum('demand');
         const spoolsLeft = Math.floor((funds - megaCost) / wireCost);
+
+        // Skip if inventory is already large and demand isn't near the ceiling.
+        // Production outpaces demand in this state — buying more capacity just
+        // deepens the backlog without adding revenue.
+        if (unsold > 100 && demand < 400) return;
+
         if (wire > 1000 && spoolsLeft >= 3) {
-            clickBtn('btnMakeMegaClipper');
+            if (clickBtn('btnMakeMegaClipper')) {
+                lastMegaClipperClick = Date.now();
+                console.log(`[AGENT] MegaClipper bought (funds=$${funds.toFixed(0)}, unsold=${unsold}, demand=${demand}%)`);
+            }
         }
     }
 
