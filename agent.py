@@ -116,8 +116,10 @@ YOUR JOB — work through this priority list each tick:
 
 3. PROJECTS — only when a non-greyed clickable project appears that is NOT in the
    auto-buy list above (check availableProjects carefully — greyed = unavailable)
-   NOTE: Xavier Re-initialization (100,000 creat) reallocates ALL trust — avoid
-   auto-buying this; it requires deliberate trust reallocation planning.
+   NEVER buy Xavier Re-initialization — it costs 100,000 creativity AND resets ALL
+   processor/memory trust to zero, destroying the computational resources built up
+   over the entire run. It is blocked by a hard guard regardless.
+   NEVER buy Quantum Temporal Reversion — it resets game state backward.
 
 4. STAGE 3 PROBE DESIGN (when colonized appears in state):
    - Self-Replication (rep) and Speed are highest leverage early — low rep stalls exploration
@@ -610,6 +612,20 @@ def run():
                 if yomi_val < upgrade_cost:
                     print(f"[WARN] LLM: upgrade_investment — yomi {yomi_val:.0f} < cost {upgrade_cost:.0f}, substituting wait")
                     action = 'wait'
+            # Never-buy project list — catastrophic or irreversible effects
+            # Xavier Re-initialization: costs 100k creativity, resets ALL trust to 0.
+            #   Re-buying it repeatedly drains creativity into the negatives and
+            #   destroys the processor/memory allocation built up over the run.
+            # Quantum Temporal Reversion: negative ops cost, resets game to an earlier
+            #   state — essentially a partial game restart.
+            if action == 'buy_project':
+                name_lower = (args.get('name') or '').lower()
+                NEVER_BUY = ['xavier', 'quantum temporal reversion']
+                for blocked in NEVER_BUY:
+                    if blocked in name_lower:
+                        print(f"[WARN] LLM: buy_project:{args.get('name')!r} — on never-buy list, substituting wait")
+                        action = 'wait'
+                        break
             # Skip if override already queued this action (deduplication)
             if action != 'wait' and action in ov_action_set:
                 print(f"[WARN] LLM: {action} — already in override queue, substituting wait")
