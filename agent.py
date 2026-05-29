@@ -1,5 +1,5 @@
 """
-agent.py — Universal Paperclips ReAct Agent v1.9
+agent.py — Universal Paperclips ReAct Agent v2.0
 Strategic decisions only. Fast mechanical actions handled by userscript.
 Game URL: https://www.decisionproblem.com/paperclips/index2.html
 
@@ -46,12 +46,12 @@ VALID ACTIONS — use exactly one, spelled exactly as shown:
     add_memory                  — spend 1 trust to add memory
     buy_project:<project name>  — buy a visible, affordable project by partial name
 
-  STRATEGIC MODELING (Phase 2 — when autoTourneyOn appears in state):
+  STRATEGIC MODELING (Stage 2 — when autoTourneyOn appears in state):
     toggle_auto_tourney         — enable/disable AutoTourney (generates Yomi passively)
     set_strategy_random         — set tournament strategy to RANDOM (do once on unlock)
     run_tournament              — run a single tournament manually (costs 1,000 ops)
 
-  INVESTMENTS (Phase 2 — only when portValue appears in state):
+  INVESTMENTS (Stage 2 — only when portValue appears in state):
     invest_deposit              — move available funds into investment bankroll
     invest_withdraw             — pull investment bankroll back to available funds
     set_invest_low              — set risk strategy to Low (safer, slower returns)
@@ -59,7 +59,7 @@ VALID ACTIONS — use exactly one, spelled exactly as shown:
     set_invest_hi               — set risk strategy to High (best long-term returns)
     upgrade_investment          — upgrade investment engine (costs Yomi)
 
-  PROBE DESIGN (Phase 3 only — when colonized appears in state):
+  PROBE DESIGN (Stage 3 only — when colonized appears in state):
     raise_probe_speed / lower_probe_speed     — rate of universe exploration
     raise_probe_nav / lower_probe_nav         — matter access rate per sector
     raise_probe_rep / lower_probe_rep         — self-replication rate
@@ -94,34 +94,32 @@ YOUR JOB — work through this priority list each tick:
 
 1. STRATEGIC MODELING / YOMI (when autoTourneyOn appears in state):
    Yomi is earned from tournaments. It funds probe trust and investment upgrades.
-   a. On first unlock: set_strategy_random (picks a strategy), then toggle_auto_tourney
-      to turn AutoTourney ON — it runs tournaments automatically from then on
-   b. If autoTourneyOn = OFF → toggle_auto_tourney to re-enable it
-   c. If autoTourneyOn = ON → nothing to do here, Yomi accumulates passively
+   AutoTourney is kept ON by a hard override — you do NOT need to toggle it.
+   Your only jobs here:
+   a. If no strategy is selected yet (first unlock): set_strategy_random
+   b. upgrade_investment when Yomi is available (see investUpgradeCost in state)
 
 2. INVESTMENTS — ONLY when portValue is visible in your state (it appears after buying
    Algorithmic Trading). If portValue is NOT in your state, the investment system does
    not exist yet — do NOT choose any invest_* or set_invest_* action.
-   When portValue IS present:
-   a. investStrategy should be 'hi' for best returns → set_invest_hi if it is not 'hi'
-   b. If investBankroll < $5 and funds > $100 → invest_deposit  (fund the engine)
-   c. If investBankroll > $0 and funds > $1000 → invest_deposit  (keep compounding)
-   d. If funds < $5 → invest_withdraw  (emergency — protect wire/clipper operations)
-   e. upgrade_investment when Yomi >= 100 — higher engine level = better returns
+   Strategy and deposits are managed by overrides — you only need to act for:
+   a. If investBankroll > $0 and funds > $1000 → invest_deposit  (keep compounding)
+   b. If funds < $5 → invest_withdraw  (emergency — protect wire/clipper operations)
+   c. upgrade_investment when Yomi is available — each level raises the profit rate
 
 3. PROJECTS — only when a non-greyed clickable project appears that is NOT in the
    auto-buy list above (check availableProjects carefully — greyed = unavailable)
    NOTE: Xavier Re-initialization (100,000 creat) reallocates ALL trust — avoid
    auto-buying this; it requires deliberate trust reallocation planning.
 
-3. PHASE 3 PROBE DESIGN (when colonized appears in state):
-   - Rep and Speed are highest leverage early — low rep stalls exploration permanently
+4. STAGE 3 PROBE DESIGN (when colonized appears in state):
+   - Self-Replication (rep) and Speed are highest leverage early — low rep stalls exploration
+   - Hazard Remediation (haz) sweet spot: 5-6 points; below 3 causes heavy probe losses
    - If drifters > 0 and probeTotal falling → raise Combat immediately
-   - Haz prevents attrition (2-3 points is worthwhile)
    - Fac, Harv, Wire drive production — keep roughly balanced
-   - increase_probe_trust expands your budget (costs Yomi)
+   - increase_probe_trust expands your total probe budget (costs Yomi; ~1.89M total to max)
 
-4. WAIT — if nothing needs strategic attention this tick
+5. WAIT — if nothing needs strategic attention this tick
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 TRUST NOTE (informational only — do not act on it):
@@ -138,7 +136,16 @@ PRICING NOTE:
 
 Respond in this EXACT format only:
 Thought: <specific reasoning referencing the actual numbers you see>
-Action: <exactly one valid action>
+Action: <action name only — no comments, no punctuation, nothing after the name>
+Action: <optional second action — only if truly independent from the first>
+Action: <optional third action — only if warranted>
+
+Rules for Action lines:
+- Write the action name ONLY. No "#", no explanations, no trailing text.
+- buy_project is the one exception: "buy_project:Project Name" (colon + name, nothing else)
+- You may include up to 3 Action lines when decisions are independent
+  (e.g., set_invest_hi then invest_deposit can safely queue together)
+- When in doubt, use just one Action line
 """
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -165,14 +172,20 @@ def get_state():
         return {}
 
 def post_action(action, args=None, thought=""):
+    """Post a single action (used by hard overrides)."""
     try:
         requests.post(f"{RELAY_URL}/action", json={
-            "action":  action,
-            "args":    args or {},
-            "thought": thought,
+            "queue": [{"action": action, "args": args or {}, "thought": thought}]
         }, timeout=3)
     except Exception as e:
         print(f"[{ts()}] ⚠ Could not post action: {e}")
+
+def post_action_queue(queue):
+    """Post a list of actions to the relay queue (LLM multi-action output)."""
+    try:
+        requests.post(f"{RELAY_URL}/action", json={"queue": queue}, timeout=3)
+    except Exception as e:
+        print(f"[{ts()}] ⚠ Could not post action queue: {e}")
 
 def format_state(state):
     if not state:
@@ -234,7 +247,7 @@ def format_state(state):
         if k == 'drifters' and fv > 0:
             flag = " ⚠ UNDER ATTACK — consider raise_probe_combat"
         if k == 'colonized':
-            flag = " ← primary Phase 3 goal (reach 100%)"
+            flag = " ← primary Stage 3 goal (reach 100%)"
         lines.append(f"  {k:<22} {v}{flag}")
     return "\n".join(lines)
 
@@ -272,7 +285,7 @@ def ask_ollama(prompt):
             "prompt":  prompt,
             "system":  SYSTEM_PROMPT,
             "stream":  False,
-            "options": {"temperature": 0.2, "num_predict": 180}
+            "options": {"temperature": 0.2, "num_predict": 280}
         }, timeout=60)
         return r.json().get("response", "").strip()
     except Exception as e:
@@ -280,14 +293,22 @@ def ask_ollama(prompt):
         return None
 
 def parse_response(text):
-    thought, action = "", "wait"
+    """Return (thought, [action_str, ...]).  Multiple Action: lines are allowed."""
+    thought = ""
+    actions = []
     for line in text.splitlines():
         line = line.strip()
         if line.lower().startswith("thought:"):
             thought = line[8:].strip()
         elif line.lower().startswith("action:"):
-            action = line[7:].strip()
-    return thought, action
+            a = line[7:].strip()
+            # Strip inline comments — the LLM sometimes appends "# reason" after the action.
+            # e.g. "upgrade_investment  # costs 100 Yomi" → "upgrade_investment"
+            if '#' in a:
+                a = a[:a.index('#')].strip()
+            if a:
+                actions.append(a)
+    return thought, actions or ["wait"]
 
 def parse_action(action_str):
     if ":" in action_str:
@@ -351,7 +372,7 @@ def run():
 
     print()
     divider("═")
-    print(f"  Universal Paperclips — ReAct Agent v1.9")
+    print(f"  Universal Paperclips — ReAct Agent v2.0")
     print(f"  Model     : {MODEL}")
     print(f"  Relay     : {RELAY_URL}")
     print(f"  Dashboard : {RELAY_URL}/dashboard")
@@ -418,25 +439,56 @@ def run():
             time.sleep(LOOP_DELAY)
             continue
 
-        # Hard override: fund investment system when active but bankroll is empty.
-        # portValue is non-empty string only after Algorithmic Trading is purchased.
+        # Hard override: investment system management.
+        # portValue is non-empty only after Algorithmic Trading is purchased.
         if state.get('portValue', ''):
-            invest_bankroll  = safe_float(state.get('investBankroll'), 0)
-            invest_strategy  = str(state.get('investStrategy', '')).lower()
-            funds_now        = safe_float(state.get('funds'), 0)
-            if invest_bankroll < 5 and funds_now > 500:
-                if invest_strategy != 'hi':
-                    inv_reason = f"investment idle — switching to High Risk (funds=${funds_now:.0f})"
-                    print(f"[!!!] INVEST OVERRIDE: {inv_reason}")
-                    post_action('set_invest_hi', thought=f"OVERRIDE: {inv_reason}")
-                    log_tick(tick, state, inv_reason, 'set_invest_hi', 0, override="invest")
-                else:
-                    inv_reason = f"investment idle — depositing (bankroll=${invest_bankroll:.0f}, funds=${funds_now:.0f})"
-                    print(f"[!!!] INVEST OVERRIDE: {inv_reason}")
-                    post_action('invest_deposit', thought=f"OVERRIDE: {inv_reason}")
-                    log_tick(tick, state, inv_reason, 'invest_deposit', 0, override="invest")
+            invest_bankroll = safe_float(state.get('investBankroll'), 0)
+            invest_strategy = str(state.get('investStrategy', '')).strip().lower()
+            invest_level    = safe_float(state.get('investLevel', '0'), 0)
+            funds_now       = safe_float(state.get('funds'), 0)
+            # High Risk is only beneficial at engine level 5+ (profit rate ≥ 0.55).
+            # Below that, Med gives better risk-adjusted returns.
+            target_strat = 'hi' if invest_level >= 5 else 'med'
+
+            # 1. Correct strategy drift — fires every tick the strategy is wrong
+            if invest_strategy and invest_strategy != target_strat:
+                inv_reason = f"strategy '{invest_strategy}' → correcting to '{target_strat}' (engine level {invest_level:.0f})"
+                print(f"[!!!] INVEST OVERRIDE: {inv_reason}")
+                post_action(f'set_invest_{target_strat}', thought=f"OVERRIDE: {inv_reason}")
+                log_tick(tick, state, inv_reason, f'set_invest_{target_strat}', 0, override="invest_strat")
                 time.sleep(LOOP_DELAY)
                 continue
+
+            # 2. Deposit when bankroll is empty, but leave a cash buffer for marketing.
+            # invest_deposit moves ALL available funds into the bankroll, which would
+            # leave the marketing fast rule unable to buy upgrades until next withdraw.
+            marketing_cost = safe_float(state.get('marketingCost'), 0)
+            # Keep at least 3× the next marketing upgrade cost in available cash.
+            min_cash = max(marketing_cost * 3.0, 500.0) if marketing_cost > 0 else 500.0
+            if invest_bankroll < 5 and funds_now > min_cash:
+                inv_reason = (
+                    f"investment idle — depositing "
+                    f"(bankroll=${invest_bankroll:.0f}, funds=${funds_now:.0f}, "
+                    f"marketing buffer ${min_cash:.0f})"
+                )
+                print(f"[!!!] INVEST OVERRIDE: {inv_reason}")
+                post_action('invest_deposit', thought=f"OVERRIDE: {inv_reason}")
+                log_tick(tick, state, inv_reason, 'invest_deposit', 0, override="invest")
+                time.sleep(LOOP_DELAY)
+                continue
+
+        # Hard override: AutoTourney — if Strategic Modeling is active but AutoTourney
+        # is OFF, enable it before wasting a tick on the LLM.
+        # autoTourneyOn is None when the strategyEngine div hasn't appeared yet
+        # (pre-Stage 2, or before Strategic Modeling is purchased).
+        at_status = state.get('autoTourneyOn')
+        if at_status is not None and str(at_status).strip().upper() != 'ON':
+            at_reason = f"AutoTourney is {at_status!r} — enabling (Yomi stops accumulating when OFF)"
+            print(f"[!!!] AUTOTOURNEY OVERRIDE: {at_reason}")
+            post_action('toggle_auto_tourney', thought=f"OVERRIDE: {at_reason}")
+            log_tick(tick, state, at_reason, 'toggle_auto_tourney', 0, override="autotourney")
+            time.sleep(LOOP_DELAY)
+            continue
 
         # Build prompt
         history_text = ""
@@ -470,36 +522,46 @@ def run():
             time.sleep(LOOP_DELAY)
             continue
 
-        thought, action_str = parse_response(raw)
-        action, args = parse_action(action_str)
-        action = validate_action(action)
+        thought, action_strs = parse_response(raw)
 
-        # Guard: block trust actions when no trust is actually available to spend
-        if action in ('add_memory', 'add_processor'):
+        # Guards applied to every action the LLM outputs
+        invest_actions = {'invest_deposit', 'invest_withdraw', 'set_invest_low',
+                          'set_invest_med', 'set_invest_hi', 'upgrade_investment'}
+
+        def _apply_guards(action_str):
+            action, args = parse_action(action_str)
+            action = validate_action(action)
             _t = safe_float(state.get('trust'), 0)
             _p = safe_float(state.get('processors'), 0)
             _m = safe_float(state.get('memory'), 0)
-            if _t - _p - _m < 1:
+            if action in ('add_memory', 'add_processor') and _t - _p - _m < 1:
                 print(f"[WARN] LLM chose {action} but trust fully allocated — substituting wait")
                 action = 'wait'
+            if action in invest_actions and not state.get('portValue', ''):
+                print(f"[WARN] LLM chose {action} but investment system not active — substituting wait")
+                action = 'wait'
+            return action, args
 
-        # Guard: block investment actions when investment system is not yet active.
-        # portValue is absent from state until Algorithmic Trading is purchased.
-        invest_actions = {'invest_deposit', 'invest_withdraw', 'set_invest_low',
-                          'set_invest_med', 'set_invest_hi', 'upgrade_investment'}
-        if action in invest_actions and not state.get('portValue', ''):
-            print(f"[WARN] LLM chose {action} but investment system not active — substituting wait")
-            action = 'wait'
+        # Build validated queue; skip trailing waits to keep the queue clean
+        queue = []
+        for action_str in action_strs:
+            action, args = _apply_guards(action_str)
+            if action != 'wait' or not queue:
+                queue.append({"action": action, "args": args, "thought": thought if not queue else ""})
 
+        primary_str = action_strs[0] if action_strs else "wait"
         print(f"[THK] {thought}")
-        print(f"[ACT] {action_str}  ({elapsed_ms}ms)")
-        if args:
-            print(f"      args: {args}")
+        if len(queue) > 1:
+            print(f"[ACT] {primary_str}  +{len(queue)-1} queued  ({elapsed_ms}ms)")
+            for q in queue[1:]:
+                print(f"[ACT+] {q['action']}" + (f": {q['args']['name']}" if q['args'].get('name') else ""))
+        else:
+            print(f"[ACT] {primary_str}  ({elapsed_ms}ms)")
         print()
 
-        history.append((thought, action_str))
-        post_action(action, args, thought=thought)
-        log_tick(tick, state, thought, action_str, elapsed_ms)
+        history.append((thought, primary_str))
+        post_action_queue(queue)
+        log_tick(tick, state, thought, primary_str, elapsed_ms)
 
         time.sleep(LOOP_DELAY)
 

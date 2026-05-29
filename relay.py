@@ -1,5 +1,5 @@
 """
-relay.py — Universal Paperclips local bridge v1.9
+relay.py — Universal Paperclips local bridge v2.0
 Sits between the Tampermonkey userscript (browser) and the ReAct agent.
 
 Endpoints:
@@ -21,10 +21,10 @@ app = Flask(__name__)
 
 # ── Shared state ──────────────────────────────────────────────────────────────
 
-latest_state   = {}
-pending_action = None
-last_result    = {}
-tick_history   = []   # list of dicts, capped at HISTORY_MAX
+latest_state  = {}
+action_queue  = []    # FIFO queue of action dicts; browser dequeues one per poll
+last_result   = {}
+tick_history  = []    # list of dicts, capped at HISTORY_MAX
 
 HISTORY_MAX = 50
 
@@ -84,20 +84,29 @@ def get_state():
 
 @app.route("/action", methods=["POST"])
 def receive_action():
-    global pending_action
+    global action_queue
     data = request.get_json(silent=True)
     if not data:
         return jsonify({"error": "no JSON"}), 400
+
+    # Accept {"queue": [...]} for multi-action or the old single-action dict format.
+    if 'queue' in data:
+        items = data['queue']
+    else:
+        items = [data]
+
     with action_lock:
-        pending_action = data
+        action_queue.extend(items)
 
-    action  = data.get('action', '')
-    args    = data.get('args', {})
-    thought = data.get('thought', '')
+    # Log and record the primary (first) action only
+    primary = items[0] if items else {}
+    action  = primary.get('action', '')
+    args    = primary.get('args', {})
+    thought = primary.get('thought', '') or data.get('thought', '')
     short   = (thought[:60] + '…') if len(thought) > 60 else thought
-    log(f"Action: {action} | {short}")
+    extra   = f" +{len(items)-1} queued" if len(items) > 1 else ""
+    log(f"Action: {action}{extra} | {short}")
 
-    # Snapshot key state fields for the history entry
     with state_lock:
         phase = latest_state.get('phase')
         clips = latest_state.get('clips')
@@ -107,7 +116,7 @@ def receive_action():
         'phase':          phase,
         'clips':          clips,
         'thought':        thought,
-        'action':         action,
+        'action':         action + (f" (+{len(items)-1})" if len(items) > 1 else ""),
         'args':           args,
         'result_success': None,
         'result_note':    '',
@@ -118,12 +127,10 @@ def receive_action():
 
 @app.route("/action", methods=["GET"])
 def send_action():
-    global pending_action
+    global action_queue
     with action_lock:
-        action = pending_action
-        pending_action = None   # consume — one-shot
-    if action:
-        return jsonify(action)
+        if action_queue:
+            return jsonify(action_queue.pop(0))   # dequeue oldest first
     return jsonify({"action": "wait"})
 
 # ── Browser → Relay (result feedback) ────────────────────────────────────────

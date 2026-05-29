@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Universal Paperclips — ReAct Agent Bridge
 // @namespace    http://localhost/
-// @version      1.9
+// @version      2.0
 // @description  Reads game state and executes agent actions via local relay
 // @author       paperclips-agent
 // @match        https://www.decisionproblem.com/paperclips/*
@@ -270,18 +270,26 @@
 
     function autoMarketing() {
         if (Date.now() - lastMarketingClick < 5000) return;
-        const funds  = getNum('funds');
-        const wire   = getWire();
-        const unsold = getNum('unsoldClips');
-        const cost   = parseFloat((getText('adCost') || '9999').replace(/[^0-9.]/g,''));
-        // Buy marketing when affordable AND either:
-        //   - demand is near its ceiling (>= 400%) — more marketing raises the cap
-        //   - OR inventory is still manageable (early game behaviour)
-        // Do NOT block marketing just because unsold is high — that's when you need it most.
-        if (funds > cost * 1.5 && wire > 200 && (demand >= 400 || unsold < 40)) {
+        const funds   = getNum('funds');
+        const wire    = getWire();
+        const unsold  = getNum('unsoldClips');
+        const demand  = getNum('demand');  // was missing from scope — marketing never fired at high demand!
+        const cost    = parseFloat((getText('adCost') || '9999').replace(/[^0-9.]/g,''));
+        // Use total wealth (available cash + investments) as the affordability signal.
+        // When most funds are deposited into the investment bankroll, available cash
+        // stays low and marketing would stall even during profitable overnight runs.
+        const bankroll    = parseFloat((getText('investmentBankroll') || '0').replace(/[^0-9.]/g,'')) || 0;
+        const stocks      = parseFloat((getText('secValue')           || '0').replace(/[^0-9.]/g,'')) || 0;
+        const totalWealth = funds + bankroll + stocks;
+        // Fire when:
+        //   - total wealth is 1.5× the cost (we can genuinely afford it)
+        //   - available funds cover the cost (game requires cash, not bankroll)
+        //   - wire is healthy (don't buy marketing while about to run out of wire)
+        //   - demand is near ceiling (>= 400%) OR inventory is still manageable
+        if (totalWealth > cost * 1.5 && funds >= cost && wire > 200 && (demand >= 400 || unsold < 40)) {
             if (clickBtn('btnExpandMarketing')) {
                 lastMarketingClick = Date.now();
-                console.log(`[AGENT] Marketing upgraded (cost was $${cost})`);
+                console.log(`[AGENT] Marketing upgraded (cost=$${cost}, wealth=$${totalWealth.toFixed(0)})`);
             }
         }
     }
@@ -300,9 +308,36 @@
         }
     }
 
+    // ── Quantum Computing ─────────────────────────────────────────────────────
+    // The photonic chip's charge oscillates on a sine wave — clicking Compute adds the
+    // CURRENT charge to ops. When the charge is negative, clicking DRAINS ops.
+    // We read qCompDisplay (result of the last click) and pause after a negative result
+    // to let the sine wave cycle back to positive before trying again.
+
+    let qComputeCoolUntil = 0;
+
+    function autoQuantumCompute() {
+        if (!isVisible('compDiv')) return;
+        if (Date.now() < qComputeCoolUntil) return;
+
+        // qCompDisplay shows "qOps: NNN" after each click (NNN may be negative).
+        //   is &nbsp; — the initial/empty state before any click.
+        const raw   = (document.getElementById('qCompDisplay')?.innerText || '').replace(/ /g, '').trim();
+        const match = raw.match(/-?\d+/);
+        if (match && parseInt(match[0]) < 0) {
+            // Last click was negative — pause 1.2s to let the chip cycle to positive phase
+            qComputeCoolUntil = Date.now() + 1200;
+            return;
+        }
+
+        clickBtn('btnQcompute');
+    }
+
     // ── Fast rules ────────────────────────────────────────────────────────────
 
     function runFastRules() {
+        autoQuantumCompute();
+
         const funds        = getNum('funds');
         const wire         = getWire();
         const unsold       = getNum('unsoldClips');
@@ -409,9 +444,10 @@
                 if (!el || el.offsetParent === null) { note = 'investStrat not visible'; break; }
                 const valMap = { 'set_invest_low': 'low', 'set_invest_med': 'med', 'set_invest_hi': 'hi' };
                 el.value = valMap[action];
-                // Must dispatch 'change' — the game listens for it to apply the strategy.
-                // Setting el.value alone changes the visual but the game ignores it.
-                el.dispatchEvent(new Event('change'));
+                // Must dispatch 'change' with bubbles:true — the game likely uses document-level
+                // event delegation. Non-bubbling events don't reach parent listeners, so the game
+                // ignores them and resets the select back to its internal investMode on its next tick.
+                el.dispatchEvent(new Event('change', { bubbles: true, cancelable: true }));
                 success  = true;
                 note     = `risk strategy set to ${valMap[action]}`;
                 break;
@@ -437,7 +473,7 @@
                 const el = document.getElementById('stratPicker');
                 if (!el || el.offsetParent === null) { note = 'stratPicker not visible'; break; }
                 el.value = '0'; // '0' = RANDOM strategy
-                el.dispatchEvent(new Event('change'));
+                el.dispatchEvent(new Event('change', { bubbles: true, cancelable: true }));
                 success = true;
                 note    = 'strategy set to RANDOM';
                 break;
@@ -501,44 +537,88 @@
     }
 
     // ── Badge ─────────────────────────────────────────────────────────────────
+    // Adjust BADGE_OPACITY (0.0 = invisible, 1.0 = fully opaque) to taste.
 
-    let badgeEl     = null;
-    let lastAction  = '—';
-    let lastThought = '';
-    let tickCount   = 0;
+    const BADGE_OPACITY = 0.93;
+
+    let badgeEl       = null;
+    let recentActions = [];   // last 3 LLM actions, [{label, tick}]
+    let lastThought   = '';
+    let tickCount     = 0;
 
     function createBadge() {
         badgeEl = document.createElement('div');
         badgeEl.id = 'agent-badge';
         badgeEl.style.cssText = `
-            position: fixed; bottom: 10px; right: 10px;
-            background: #0d1117; color: #c9d1d9;
-            font-family: monospace; font-size: 11px; line-height: 1.6;
-            padding: 10px 14px; border-radius: 6px;
+            position: fixed; bottom: 12px; right: 12px;
+            background: rgba(13,17,23,${BADGE_OPACITY}); color: #c9d1d9;
+            font-family: monospace; font-size: 11px; line-height: 1.7;
+            padding: 12px 16px; border-radius: 8px;
             border: 1px solid #30363d; z-index: 9999;
-            pointer-events: none; min-width: 220px; max-width: 300px;
+            pointer-events: none; width: 380px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
         `;
         document.body.appendChild(badgeEl);
     }
 
     function updateBadge(state) {
         if (!badgeEl) return;
-        const phase    = state ? state.phase    : '?';
-        const clips    = state ? state.clips    : '—';
-        const funds    = state ? state.funds    : '—';
-        const wire     = state ? state.wire     : '—';
-        const wireWarn = (wire !== '—' && parseFloat(wire) < 100) ? ' ⚠' : '';
-        const thought  = lastThought
-            ? lastThought.substring(0, 55) + (lastThought.length > 55 ? '…' : '')
-            : '—';
+
+        const stage    = state ? state.phase          : '?';
+        const clips    = state ? (state.clips   || '—') : '—';
+        const funds    = state ? (state.funds   || '—') : '—';
+        const wire     = state ? (state.wire    || '—') : '—';
+        const demand   = state ? (state.demand  || null) : null;
+        const yomi     = state ? (state.yomi    || null) : null;
+        const unsold   = state ? (state.unsoldClips || null) : null;
+        const ops      = state ? (state.operations  || null) : null;
+        const autoTrny = state ? (state.autoTourneyOn || null) : null;
+
+        const wireNum  = parseFloat(wire);
+        const wireWarn = (!isNaN(wireNum) && wireNum < 100)
+            ? ' <span style="color:#f85149">⚠ LOW</span>' : '';
+
+        // Thought — longer display with word-break
+        const thought = lastThought
+            ? lastThought.substring(0, 200) + (lastThought.length > 200 ? '…' : '')
+            : '(waiting for LLM…)';
+
+        // Recent actions — newest first
+        const actHtml = recentActions.length
+            ? [...recentActions].reverse().map(a =>
+                `<span style="color:#3fb950">▸</span> <span style="color:#e6edf3">#${a.tick}</span> ${a.label}`
+              ).join('<br>')
+            : '<span style="color:#484f58">—</span>';
+
+        const hr = `<div style="border-top:1px solid #21262d;margin:7px 0 5px"></div>`;
+
         badgeEl.innerHTML =
-            `<span style="color:#58a6ff;font-weight:bold">🤖 Agent</span>` +
-            `<span style="color:#8b949e;float:right">Ph ${phase} · #${tickCount}</span><br>` +
-            `<span style="color:#8b949e">clips </span> ${clips}<br>` +
-            `<span style="color:#8b949e">funds </span> ${funds}<br>` +
-            `<span style="color:#8b949e">wire  </span> ${wire}${wireWarn}<br>` +
-            `<span style="color:#8b949e">act   </span> <span style="color:#3fb950">${lastAction}</span><br>` +
-            `<span style="color:#8b949e">why   </span> <span style="color:#8b949e;font-size:10px">${thought}</span>`;
+            // Header
+            `<div style="display:flex;justify-content:space-between;align-items:center;` +
+            `border-bottom:1px solid #21262d;padding-bottom:5px;margin-bottom:7px">` +
+            `<span style="color:#58a6ff;font-weight:bold;font-size:12px">🤖 AGENT v2.0</span>` +
+            `<span style="color:#484f58">Stage ${stage} &nbsp;·&nbsp; tick #${tickCount}</span>` +
+            `</div>` +
+            // State grid
+            `<span style="color:#8b949e">clips   </span>${clips}<br>` +
+            `<span style="color:#8b949e">funds   </span>${funds}<br>` +
+            `<span style="color:#8b949e">wire    </span>${wire}${wireWarn}<br>` +
+            (demand  ? `<span style="color:#8b949e">demand  </span>${demand}<br>` : '') +
+            (unsold  ? `<span style="color:#8b949e">unsold  </span>${unsold}<br>` : '') +
+            (yomi    ? `<span style="color:#8b949e">yomi    </span>${yomi}<br>`   : '') +
+            (ops     ? `<span style="color:#8b949e">ops     </span>${ops}<br>`    : '') +
+            (autoTrny !== null
+                ? `<span style="color:#8b949e">tourney </span>` +
+                  `<span style="color:${autoTrny === 'ON' ? '#3fb950' : '#f85149'}">${autoTrny}</span><br>`
+                : '') +
+            // Thought
+            hr +
+            `<div style="color:#e3b341;font-size:10px;letter-spacing:.5px;margin-bottom:3px">THOUGHT</div>` +
+            `<div style="color:#8b949e;font-size:10px;word-break:break-word;line-height:1.5">${thought}</div>` +
+            // Recent actions
+            hr +
+            `<div style="color:#e3b341;font-size:10px;letter-spacing:.5px;margin-bottom:3px">RECENT ACTIONS</div>` +
+            `<div style="font-size:10px;line-height:1.8">${actHtml}</div>`;
     }
 
     // ── Action polling ────────────────────────────────────────────────────────
@@ -551,9 +631,11 @@
                 try {
                     const data = JSON.parse(resp.responseText);
                     if (data && data.action && data.action !== 'wait') {
-                        lastAction  = data.action + (data.args && data.args.name ? ': ' + data.args.name : '');
-                        lastThought = data.thought || '';
                         tickCount++;
+                        const label = data.action + (data.args && data.args.name ? ': ' + data.args.name : '');
+                        lastThought = data.thought || lastThought;
+                        recentActions.push({ label, tick: tickCount });
+                        if (recentActions.length > 3) recentActions.shift();
                         executeAction(data.action, data.args);
                     }
                 } catch (e) {
@@ -567,7 +649,7 @@
     // ── Startup ───────────────────────────────────────────────────────────────
 
     function init() {
-        console.log('[AGENT] Universal Paperclips bridge v1.9 active');
+        console.log('[AGENT] Universal Paperclips bridge v2.0 active');
 
         setInterval(runFastRules,        50);
         setInterval(autoSpendOnProjects, 500);
