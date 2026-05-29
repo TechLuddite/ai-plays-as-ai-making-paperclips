@@ -358,6 +358,34 @@
         clickBtn('btnQcompute');
     }
 
+    // ── Auto-run tournament ───────────────────────────────────────────────────
+    // Fires btnRunTournament directly when ops hit 90%+ of max capacity.
+    // Tournaments cost 1,000 ops and award Yomi.
+    // This catches the case where AutoTourney is ON but strategy wasn't sticking.
+    // Uses direct .click() (not clickBtn) to bypass the offsetParent visibility
+    // check — btnRunTournament may report hidden inside strategyEngine.
+
+    let lastTournamentRun = 0;
+
+    function autoRunTournament() {
+        if (!isVisible('strategyEngine')) return;
+        if (Date.now() - lastTournamentRun < 2000) return;
+
+        const opsText = getText('operations') || '';
+        const parts   = opsText.split('/').map(s => parseInt(s.replace(/[^0-9]/g, '').trim()));
+        const currOps = isNaN(parts[0]) ? 0 : parts[0];
+        const maxOps  = isNaN(parts[1]) ? 1 : parts[1];
+
+        if (maxOps > 100 && currOps >= maxOps * 0.9) {
+            const btn = document.getElementById('btnRunTournament');
+            if (btn && !btn.disabled) {
+                btn.click();
+                lastTournamentRun = Date.now();
+                console.log(`[AGENT] Tournament run (ops ${currOps}/${maxOps})`);
+            }
+        }
+    }
+
     // ── Fast rules ────────────────────────────────────────────────────────────
 
     function runFastRules() {
@@ -391,17 +419,33 @@
             }
         }
 
+        // Tournament strategy — enforce RANDOM every fast-rules tick.
+        // stratPicker may have offsetParent=null inside strategyEngine (reports hidden but
+        // is functional). The agent override was silently bailing on the visibility check;
+        // enforcing directly here at 50ms wins over the game's render resets.
+        if (isVisible('strategyEngine')) {
+            const sp = document.getElementById('stratPicker');
+            if (sp && sp.value !== '0') {
+                sp.value = '0';
+                sp.dispatchEvent(new Event('change', { bubbles: true, cancelable: true }));
+                sp.dispatchEvent(new Event('input',  { bubbles: true, cancelable: true }));
+            }
+        }
+
         // Price management — stage-aware.
         //
-        // Stage 1 (investmentEngine not visible): revenue comes from selling clips.
+        // Stage 1 (portValue absent): revenue comes from selling clips.
         //   Target demand: 200–500%. If inventory outpaces the market, lower price.
         //   Cap: more than ~10 seconds of production sitting unsold = price too high.
         //
-        // Stage 2+ (investmentEngine visible): primary income is the investment engine.
+        // Stage 2+ (portValue present): primary income is the investment engine.
         //   Clips need to ACCUMULATE — Stage 3 (Space Exploration) requires 5 octillion clips.
         //   Do NOT lower price to clear inventory; let clips pile up for that goal.
         //   Only intervene if demand collapses near zero, or raise price at ceiling.
-        const investActive = isVisible('investmentEngine');
+        //
+        // Use portValue text rather than isVisible('investmentEngine') — the div may report
+        // hidden in Stage 2 even though investments are active and portValue is readable.
+        const investActive = !!getText('portValue');
         const clipRate     = getNum('clipmakerRate', 0);
         // ~10 seconds of production is a healthy Stage 1 buffer; above this, price is too high.
         const inventoryCap = Math.max(1000, clipRate * 10);
@@ -502,8 +546,11 @@
 
             // ── Strategic Modeling / AutoTourney ──────────────────────────────
             case 'run_tournament': {
-                success = clickBtn('btnRunTournament');
-                note    = success ? 'tournament run' : 'run tournament button not visible';
+                // Use direct .click() — btnRunTournament may have offsetParent=null
+                // inside strategyEngine even when clickable.
+                const btn = document.getElementById('btnRunTournament');
+                if (btn && !btn.disabled) { btn.click(); success = true; note = 'tournament run'; }
+                else { note = 'run tournament button not found or disabled'; }
                 break;
             }
             case 'toggle_auto_tourney': {
@@ -513,9 +560,13 @@
             }
             case 'set_strategy_random': {
                 const el = document.getElementById('stratPicker');
-                if (!el || el.offsetParent === null) { note = 'stratPicker not visible'; break; }
+                if (!el) { note = 'stratPicker not found'; break; }
+                // Do NOT check el.offsetParent — the select is functional inside
+                // strategyEngine even when the browser reports it as hidden.
+                // Checking offsetParent is why this action silently did nothing before.
                 el.value = '0'; // '0' = RANDOM strategy
                 el.dispatchEvent(new Event('change', { bubbles: true, cancelable: true }));
+                el.dispatchEvent(new Event('input',  { bubbles: true, cancelable: true }));
                 success = true;
                 note    = 'strategy set to RANDOM';
                 break;
@@ -696,6 +747,7 @@
 
         setInterval(runFastRules,        50);
         setInterval(autoSpendOnProjects, 500);
+        setInterval(autoRunTournament,   500);
         setInterval(autoMarketing,       1000);
         setInterval(autoMegaClippers,    1000);
         setInterval(pollAction,          ACTION_MS);

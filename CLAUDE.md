@@ -43,6 +43,8 @@ Flask Relay → browser polls GET /action (includes thought) → executes click
 - Wire buying, AutoClipper/MegaClipper purchases
 - Price management, Marketing upgrades
 - Project priority queue, emergency wire recovery
+- Tournament strategy enforcement (stratPicker='0' enforced every 50ms)
+- Auto-run tournaments when ops ≥ 90% cap (`autoRunTournament`, 500ms interval)
 
 **LLM Agent (ReAct loop — every 2 seconds):**
 - Strategic pricing, trust allocation (processors vs memory)
@@ -70,7 +72,6 @@ In `bridge.user.js` (constants at top of file):
 ## Known Issues
 
 ### ACTIVE
-- **Price strategy**: demand ~100% target vs current ceiling-chasing. Still unaddressed.
 - **Xavier Re-initialization appears twice** in project list (game quirk or selector issue).
 - **start.ps1 display quirk**: relay + agent both in same terminal. Deferred.
 
@@ -90,6 +91,10 @@ In `bridge.user.js` (constants at top of file):
 - Domain labels in LLM output ✅ — parse_response() strips them; examples redesigned
 - Quantum Computing ops drain ✅ — qCompDisplay check + 1200ms cooldown
 - dispatchEvent not bubbling ✅ — { bubbles: true, cancelable: true } on investStrat/stratPicker
+- stratPicker not sticking (Yomi = 0 despite AutoTourney ON) ✅ — root cause: offsetParent check in
+  executeAction silently bailed; fixed by removing check + adding 50ms fast-rule enforcement + 'input' event
+- Tournaments not running at ops cap ✅ — autoRunTournament() fast rule fires btnRunTournament at ≥90% ops
+- investActive Stage 2 detection ✅ — was isVisible('investmentEngine'), now !!getText('portValue')
 
 ## Key DOM IDs (confirmed from game HTML source)
 - Investments: `btnInvest` (Deposit), `btnWithdraw`, `#investStrat` (low/med/hi select),
