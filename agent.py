@@ -78,15 +78,19 @@ Only choose buy_project if the project appears in availableProjects AND is affor
 
 SYSTEM_PROMPT = f"""You are an AI agent playing Universal Paperclips.
 
-WHAT THE BROWSER HANDLES AUTOMATICALLY — never choose these:
+WHAT THE AGENT HANDLES AUTOMATICALLY — never choose these:
   - Make Paperclip, Buy Wire, Buy AutoClipper/MegaClipper
   - Price management (raise/lower based on demand and inventory)
   - Marketing purchases
   - Projects in the auto-buy queue: wirebuyer, improved/optimized autoclippers,
     microlattice shapecasting, catchy jingle, quantum computing, algorithmic trading,
     strategic modeling, and most ops/creativity-cost projects
-  - Trust allocation: add_memory and add_processor fire automatically when trust
-    points are available — you do NOT need to choose these ever
+  - Trust allocation (add_memory, add_processor) — override fires whenever trust is free
+  - Investment deposits, withdrawals, risk strategy
+    (invest_deposit, invest_withdraw, set_invest_low/med/hi) — override-managed every tick
+  - AutoTourney toggling (toggle_auto_tourney) — kept ON by override
+  - Tournament strategy selection (set_strategy_random) — set to RANDOM by override
+    on first unlock; you never need to set it again
   - Emergency wire recovery
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -98,9 +102,9 @@ YOUR JOB — work through this priority list each tick:
    whenever ops allow, earning Yomi passively. You never need to "spend" Yomi on
    tournaments — Yomi is only spent on upgrade_investment and increase_probe_trust.
    AutoTourney is kept ON by a hard override — you do NOT need to toggle it.
-   Your only jobs here:
-   a. If no strategy is selected yet (first unlock): set_strategy_random
-   b. upgrade_investment when yomi >= investUpgradeCost — each level boosts returns
+   Your only job here: upgrade_investment when yomi >= investUpgradeCost.
+   (Strategy selection and AutoTourney toggling are handled by override — you never
+   need to choose set_strategy_random or toggle_auto_tourney.)
 
 2. INVESTMENTS — ONLY when portValue is visible in your state (it appears after buying
    Algorithmic Trading). If portValue is NOT in your state, the investment system does
@@ -139,16 +143,18 @@ PRICING NOTE:
 
 Respond in this EXACT format only:
 Thought: <specific reasoning referencing the actual numbers you see>
-Action: <action name only — no comments, no punctuation, nothing after the name>
-Action: <optional second action — only if truly independent from the first>
-Action: <optional third action — only if warranted>
+Action: <action for the first domain that needs attention>
+Action: <action for a second domain — if another domain also needs something>
+Action: <action for a third domain — if warranted>
 
 Rules for Action lines:
+- One action per game domain (projects, probe design, investments, etc.).
+  Do NOT output two actions for the same domain — only the first is useful.
 - Write the action name ONLY. No "#", no explanations, no trailing text.
 - buy_project is the one exception: "buy_project:Project Name" (colon + name, nothing else)
-- You may include up to 3 Action lines when decisions are independent
-  (e.g., set_invest_hi then invest_deposit can safely queue together)
-- When in doubt, use just one Action line
+- Output up to 3 Action lines when multiple domains need attention simultaneously.
+  Example: "buy_project:Hostile Takeover" for projects AND "raise_probe_rep" for probes.
+- When only one domain needs attention, output just one Action line.
 """
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -447,7 +453,7 @@ def run():
             note = f" — {last_result['note']}" if last_result.get('note') else ""
             print(f"[FB ] Last: {last_result['action']} {icon}{note}\n")
 
-        # Hard override: wire emergency
+        # Hard exit: wire emergency — only situation that skips the LLM entirely.
         if is_emergency(state):
             reason = "EMERGENCY: wire=0, broke, no WireBuyer"
             print(f"[!!!] {reason} — forcing Beg for More Wire")
@@ -456,90 +462,84 @@ def run():
             time.sleep(LOOP_DELAY)
             continue
 
-        # Hard override: trust balance
+        # ── Override collection ──────────────────────────────────────────────────
+        # Each active domain contributes at most one action to ov[].
+        # Crucially, these do NOT use continue — the LLM always runs afterward
+        # and its actions are appended to the same queue.  This means every domain
+        # gets attention every tick, even if another domain's override fires.
+
+        ov = []   # [{"action":…, "args":…, "thought":…}, …]
+
+        # Trust balance
         trust_action, trust_reason = check_trust_action(state)
         if trust_action:
-            print(f"[!!!] TRUST OVERRIDE: {trust_reason} — forcing {trust_action}")
-            post_action(trust_action, thought=f"OVERRIDE: {trust_reason}")
-            log_tick(tick, state, trust_reason, trust_action, 0, override="trust")
-            time.sleep(LOOP_DELAY)
-            continue
+            print(f"[!!!] TRUST: {trust_reason}")
+            ov.append({"action": trust_action, "args": {},
+                       "thought": f"OVERRIDE: {trust_reason}"})
 
-        # Hard override: investment system management.
-        # portValue is non-empty only after Algorithmic Trading is purchased.
+        # Investment management (portValue present = Algorithmic Trading purchased)
         if state.get('portValue', ''):
             invest_bankroll = safe_float(state.get('investBankroll'), 0)
             invest_strategy = str(state.get('investStrategy', '')).strip().lower()
             invest_level    = safe_float(state.get('investLevel', '0'), 0)
             funds_now       = safe_float(state.get('funds'), 0)
             marketing_cost  = safe_float(state.get('marketingCost'), 0)
-            # High Risk is only beneficial at engine level 5+ (profit rate ≥ 0.55).
-            # Below that, Med gives better risk-adjusted returns.
-            target_strat = 'hi' if invest_level >= 5 else 'med'
+            target_strat    = 'hi' if invest_level >= 5 else 'med'
+            min_cash        = max(marketing_cost * 3.0, 500.0) if marketing_cost > 0 else 500.0
 
-            # 1. Correct strategy drift — fires every tick the strategy is wrong
             if invest_strategy and invest_strategy != target_strat:
-                inv_reason = f"strategy '{invest_strategy}' → correcting to '{target_strat}' (engine level {invest_level:.0f})"
-                print(f"[!!!] INVEST OVERRIDE: {inv_reason}")
-                post_action(f'set_invest_{target_strat}', thought=f"OVERRIDE: {inv_reason}")
-                log_tick(tick, state, inv_reason, f'set_invest_{target_strat}', 0, override="invest_strat")
-                time.sleep(LOOP_DELAY)
-                continue
+                # Strategy drift — correct every tick it's wrong
+                inv_reason = (f"strategy '{invest_strategy}' → '{target_strat}' "
+                              f"(engine level {invest_level:.0f})")
+                print(f"[!!!] INVEST STRAT: {inv_reason}")
+                ov.append({"action": f'set_invest_{target_strat}', "args": {},
+                           "thought": f"OVERRIDE: {inv_reason}"})
 
-            # 2. Auto-withdraw when cash is too low to afford pending purchases.
-            # invest_deposit is all-or-nothing (moves ALL cash into the bankroll), so
-            # once deposited, the marketing fast rule and LLM have no cash to work with.
-            # Pattern: if funds < next marketing cost but bankroll is ample → withdraw.
-            # withdraw_cooldown then suppresses re-deposit for N ticks so the freed cash
-            # can actually be spent before it gets recycled back into the bankroll.
-            if (marketing_cost > 0
-                    and funds_now < marketing_cost
+            elif (marketing_cost > 0 and funds_now < marketing_cost
                     and invest_bankroll > marketing_cost * 2):
-                wd_reason = (
-                    f"cash ${funds_now:.0f} below marketing cost ${marketing_cost:.0f} "
-                    f"— withdrawing bankroll ${invest_bankroll:.0f} to free up funds"
-                )
-                print(f"[!!!] WITHDRAW OVERRIDE: {wd_reason}")
-                post_action('invest_withdraw', thought=f"OVERRIDE: {wd_reason}")
-                log_tick(tick, state, wd_reason, 'invest_withdraw', 0, override="withdraw_for_needs")
-                withdraw_cooldown = 3   # suppress re-deposit for 3 ticks (~6s) so cash gets spent
-                time.sleep(LOOP_DELAY)
-                continue
+                # Cash too low for marketing — withdraw to free funds
+                wd_reason = (f"cash ${funds_now:.0f} < marketing ${marketing_cost:.0f} "
+                             f"— withdrawing bankroll ${invest_bankroll:.0f}")
+                print(f"[!!!] WITHDRAW: {wd_reason}")
+                ov.append({"action": "invest_withdraw", "args": {},
+                           "thought": f"OVERRIDE: {wd_reason}"})
+                withdraw_cooldown = 3   # suppress re-deposit for ~6 s so cash gets spent
 
-            # 3. Deposit when bankroll is empty, but leave a cash buffer for marketing.
-            # invest_deposit moves ALL available funds into the bankroll, which would
-            # leave the marketing fast rule unable to buy upgrades until next withdraw.
-            # Skip deposit for a few ticks after a withdraw to let cash get spent first.
-            min_cash = max(marketing_cost * 3.0, 500.0) if marketing_cost > 0 else 500.0
-            if withdraw_cooldown > 0:
-                withdraw_cooldown -= 1
-                # Suppress deposit — let fast rules and LLM spend the freed-up cash.
+            elif withdraw_cooldown > 0:
+                withdraw_cooldown -= 1  # still in cooldown — let fast rules spend freed cash
+
             elif invest_bankroll < 5 and funds_now > min_cash:
-                inv_reason = (
-                    f"investment idle — depositing "
-                    f"(bankroll=${invest_bankroll:.0f}, funds=${funds_now:.0f}, "
-                    f"marketing buffer ${min_cash:.0f})"
-                )
-                print(f"[!!!] INVEST OVERRIDE: {inv_reason}")
-                post_action('invest_deposit', thought=f"OVERRIDE: {inv_reason}")
-                log_tick(tick, state, inv_reason, 'invest_deposit', 0, override="invest")
-                time.sleep(LOOP_DELAY)
-                continue
+                # Bankroll empty — deposit idle cash
+                inv_reason = (f"investment idle — depositing "
+                              f"(bankroll=${invest_bankroll:.0f}, funds=${funds_now:.0f})")
+                print(f"[!!!] INVEST DEPOSIT: {inv_reason}")
+                ov.append({"action": "invest_deposit", "args": {},
+                           "thought": f"OVERRIDE: {inv_reason}"})
 
-        # Hard override: AutoTourney — if Strategic Modeling is active but AutoTourney
-        # is OFF, enable it before wasting a tick on the LLM.
-        # autoTourneyOn is None when the strategyEngine div hasn't appeared yet
-        # (pre-Stage 2, or before Strategic Modeling is purchased).
+        # AutoTourney (fires when Strategic Modeling is unlocked but tourney is OFF)
         at_status = state.get('autoTourneyOn')
         if at_status is not None and str(at_status).strip().upper() != 'ON':
-            at_reason = f"AutoTourney is {at_status!r} — enabling (Yomi stops accumulating when OFF)"
-            print(f"[!!!] AUTOTOURNEY OVERRIDE: {at_reason}")
-            post_action('toggle_auto_tourney', thought=f"OVERRIDE: {at_reason}")
-            log_tick(tick, state, at_reason, 'toggle_auto_tourney', 0, override="autotourney")
-            time.sleep(LOOP_DELAY)
-            continue
+            at_reason = f"AutoTourney is {at_status!r} — enabling"
+            print(f"[!!!] AUTOTOURNEY: {at_reason}")
+            ov.append({"action": "toggle_auto_tourney", "args": {},
+                       "thought": f"OVERRIDE: {at_reason}"})
 
-        # Build prompt
+        # Tournament strategy (fires when Strategic Modeling is unlocked but
+        # no valid Yomi-earning strategy is selected yet).
+        # stratPicker '0' = RANDOM (best for passive Yomi generation).
+        # Any other value — including the default "Pick a Strat" placeholder —
+        # means no tournaments will run and Yomi stays at 0.
+        strat_picker = state.get('stratPicker')
+        if (at_status is not None
+                and strat_picker is not None
+                and str(strat_picker).strip() != '0'):
+            strat_reason = (f"no tournament strategy set (stratPicker={strat_picker!r}) "
+                            f"— selecting RANDOM for passive Yomi")
+            print(f"[!!!] STRATEGY: {strat_reason}")
+            ov.append({"action": "set_strategy_random", "args": {},
+                       "thought": f"OVERRIDE: {strat_reason}"})
+
+        # ── LLM decision (always runs every tick) ────────────────────────────────
         history_text = ""
         if history:
             history_text = "\nRecent decisions:\n"
@@ -565,17 +565,21 @@ def run():
         elapsed_ms = int((time.time() - t0) * 1000)
 
         if not raw:
-            print(f"[ACT] wait (LLM unavailable)\n")
-            post_action("wait", thought="LLM unavailable")
-            log_tick(tick, state, "", "wait", elapsed_ms)
+            # LLM unavailable — still post whatever overrides collected
+            if not ov:
+                ov.append({"action": "wait", "args": {}, "thought": "LLM unavailable"})
+            print(f"[ACT] LLM unavailable — {len(ov)} override action(s)\n")
+            post_action_queue(ov)
+            log_tick(tick, state, "LLM unavailable", ov[0]['action'], elapsed_ms)
             time.sleep(LOOP_DELAY)
             continue
 
         thought, action_strs = parse_response(raw)
 
-        # Guards applied to every action the LLM outputs
+        # Guards applied to every LLM action — block override-managed and unaffordable actions
         invest_actions = {'invest_deposit', 'invest_withdraw', 'set_invest_low',
                           'set_invest_med', 'set_invest_hi', 'upgrade_investment'}
+        ov_action_set  = {o['action'] for o in ov}   # already in queue — skip duplicates
 
         def _apply_guards(action_str):
             action, args = parse_action(action_str)
@@ -584,46 +588,62 @@ def run():
             _p = safe_float(state.get('processors'), 0)
             _m = safe_float(state.get('memory'), 0)
             if action in ('add_memory', 'add_processor') and _t - _p - _m < 1:
-                print(f"[WARN] LLM chose {action} but trust fully allocated — substituting wait")
+                print(f"[WARN] LLM: {action} — trust fully allocated, substituting wait")
                 action = 'wait'
             if action in invest_actions and not state.get('portValue', ''):
-                print(f"[WARN] LLM chose {action} but investment system not active — substituting wait")
+                print(f"[WARN] LLM: {action} — investment system not active, substituting wait")
                 action = 'wait'
-            # invest_deposit is fully override-managed — the LLM should never choose it.
-            # Blocking it here prevents the LLM from immediately re-depositing after a
-            # withdraw override, which would defeat the purpose of the withdraw.
-            if action == 'invest_deposit':
-                print(f"[WARN] LLM chose invest_deposit — override-managed, substituting wait")
+            # Override-managed actions — LLM must not choose these
+            if action in ('invest_deposit', 'set_invest_low', 'set_invest_med',
+                          'set_invest_hi', 'toggle_auto_tourney'):
+                print(f"[WARN] LLM: {action} — override-managed, substituting wait")
                 action = 'wait'
-            # upgrade_investment requires Yomi — block it when the LLM can't actually afford it.
+            # set_strategy_random — only block if RANDOM is already set
+            if (action == 'set_strategy_random'
+                    and str(state.get('stratPicker', '')).strip() == '0'):
+                print(f"[WARN] LLM: set_strategy_random — RANDOM already active, substituting wait")
+                action = 'wait'
+            # upgrade_investment — block when Yomi is insufficient
             if action == 'upgrade_investment':
-                yomi_val    = safe_float(state.get('yomi'), 0)
+                yomi_val     = safe_float(state.get('yomi'), 0)
                 upgrade_cost = safe_float(state.get('investUpgradeCost'), 999_999)
                 if yomi_val < upgrade_cost:
-                    print(f"[WARN] LLM chose upgrade_investment but yomi={yomi_val:.0f} < cost={upgrade_cost:.0f} — substituting wait")
+                    print(f"[WARN] LLM: upgrade_investment — yomi {yomi_val:.0f} < cost {upgrade_cost:.0f}, substituting wait")
                     action = 'wait'
+            # Skip if override already queued this action (deduplication)
+            if action != 'wait' and action in ov_action_set:
+                print(f"[WARN] LLM: {action} — already in override queue, substituting wait")
+                action = 'wait'
             return action, args
 
-        # Build validated queue; skip trailing waits to keep the queue clean
-        queue = []
+        # Build LLM portion of the queue
+        llm_q = []
         for action_str in action_strs:
             action, args = _apply_guards(action_str)
-            if action != 'wait' or not queue:
-                queue.append({"action": action, "args": args, "thought": thought if not queue else ""})
+            if action != 'wait' or not llm_q:
+                llm_q.append({"action": action, "args": args,
+                              "thought": thought if not llm_q else ""})
 
-        primary_str = action_strs[0] if action_strs else "wait"
+        # ── Merge and post ───────────────────────────────────────────────────────
+        # Override actions first (higher deterministic priority), then LLM actions.
+        queue = ov + llm_q
+
+        ov_str  = " | ".join(o['action'] for o in ov)
+        llm_str = " | ".join(
+            l['action'] + (f":{l['args']['name']}" if l['args'].get('name') else "")
+            for l in llm_q if l['action'] != 'wait'
+        ) or "wait"
         print(f"[THK] {thought}")
-        if len(queue) > 1:
-            print(f"[ACT] {primary_str}  +{len(queue)-1} queued  ({elapsed_ms}ms)")
-            for q in queue[1:]:
-                print(f"[ACT+] {q['action']}" + (f": {q['args']['name']}" if q['args'].get('name') else ""))
-        else:
-            print(f"[ACT] {primary_str}  ({elapsed_ms}ms)")
+        if ov_str:
+            print(f"[OVR] {ov_str}")
+        print(f"[ACT] {llm_str}  ({elapsed_ms}ms)")
         print()
 
-        history.append((thought, primary_str))
+        primary_str = queue[0]['action'] if queue else "wait"
+        history.append((thought, llm_str))
         post_action_queue(queue)
-        log_tick(tick, state, thought, primary_str, elapsed_ms)
+        ov_label = "+".join(o['action'] for o in ov) if ov else None
+        log_tick(tick, state, thought, primary_str, elapsed_ms, override=ov_label)
 
         time.sleep(LOOP_DELAY)
 
