@@ -102,10 +102,10 @@ YOUR JOB — work through this priority list each tick:
 2. INVESTMENTS — ONLY when portValue is visible in your state (it appears after buying
    Algorithmic Trading). If portValue is NOT in your state, the investment system does
    not exist yet — do NOT choose any invest_* or set_invest_* action.
-   Strategy and deposits are managed by overrides — you only need to act for:
-   a. If investBankroll > $0 and funds > $1000 → invest_deposit  (keep compounding)
-   b. If funds < $5 → invest_withdraw  (emergency — protect wire/clipper operations)
-   c. upgrade_investment when Yomi is available — each level raises the profit rate
+   Deposits, withdrawals, and risk strategy are ALL managed by hard overrides —
+   you do NOT need to choose invest_deposit, invest_withdraw, or set_invest_* ever.
+   Your ONLY investment action: upgrade_investment — but ONLY when yomi >= investUpgradeCost.
+   If yomi is 0 or less than the listed upgrade cost, do NOT choose upgrade_investment.
 
 3. PROJECTS — only when a non-greyed clickable project appears that is NOT in the
    auto-buy list above (check availableProjects carefully — greyed = unavailable)
@@ -564,6 +564,19 @@ def run():
             if action in invest_actions and not state.get('portValue', ''):
                 print(f"[WARN] LLM chose {action} but investment system not active — substituting wait")
                 action = 'wait'
+            # invest_deposit is fully override-managed — the LLM should never choose it.
+            # Blocking it here prevents the LLM from immediately re-depositing after a
+            # withdraw override, which would defeat the purpose of the withdraw.
+            if action == 'invest_deposit':
+                print(f"[WARN] LLM chose invest_deposit — override-managed, substituting wait")
+                action = 'wait'
+            # upgrade_investment requires Yomi — block it when the LLM can't actually afford it.
+            if action == 'upgrade_investment':
+                yomi_val    = safe_float(state.get('yomi'), 0)
+                upgrade_cost = safe_float(state.get('investUpgradeCost'), 999_999)
+                if yomi_val < upgrade_cost:
+                    print(f"[WARN] LLM chose upgrade_investment but yomi={yomi_val:.0f} < cost={upgrade_cost:.0f} — substituting wait")
+                    action = 'wait'
             return action, args
 
         # Build validated queue; skip trailing waits to keep the queue clean
