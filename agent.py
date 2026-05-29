@@ -143,20 +143,26 @@ PRICING NOTE:
 
 {ACTIONS}
 
-Respond in this EXACT format only:
-Thought: <specific reasoning referencing the actual numbers you see>
-Action: <action for the first domain that needs attention>
-Action: <action for a second domain — if another domain also needs something>
-Action: <action for a third domain — if warranted>
+MANDATORY RESPONSE FORMAT — fill in every required line every tick:
 
-Rules for Action lines:
-- One action per game domain (projects, probe design, investments, etc.).
-  Do NOT output two actions for the same domain — only the first is useful.
-- Write the action name ONLY. No "#", no explanations, no trailing text.
-- buy_project is the one exception: "buy_project:Project Name" (colon + name, nothing else)
-- Output up to 3 Action lines when multiple domains need attention simultaneously.
-  Example: "buy_project:Hostile Takeover" for projects AND "raise_probe_rep" for probes.
-- When only one domain needs attention, output just one Action line.
+Thought: <your reasoning — cite specific numbers from the state>
+Action: <Projects:    buy_project:Name  OR  wait>
+Action: <Investments: upgrade_investment  OR  wait>   ← Stage 2 only (skip if portValue absent)
+Action: <Probes:      probe stat action  OR  wait>    ← Stage 3 only (skip if colonized absent)
+Action: <Pricing:     raise_price  OR  lower_price>   ← OPTIONAL, only if fast rules are failing
+
+CRITICAL RULES:
+1. Write the action name ONLY on each line. Do NOT include the domain label or brackets.
+   Correct:   Action: wait
+   Correct:   Action: buy_project:Hostile Takeover
+   Wrong:     Action: Projects: wait
+   Wrong:     Action: [buy_project:Name OR wait]
+2. The Projects line is ALWAYS required — output it every single tick.
+3. The Investments line is required whenever portValue appears in the state.
+4. The Probes line is required whenever colonized appears in the state.
+5. buy_project uses a colon: "buy_project:Exact Project Name" — nothing else on that line.
+6. Pricing is optional — the fast rules handle it. Only add a pricing Action if the rules
+   are clearly stuck (e.g. demand is 0% and falling and you need to intervene).
 """
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -318,7 +324,7 @@ def ask_ollama(prompt):
             "prompt":  prompt,
             "system":  SYSTEM_PROMPT,
             "stream":  False,
-            "options": {"temperature": 0.2, "num_predict": 280}
+            "options": {"temperature": 0.2, "num_predict": 400}
         }, timeout=60)
         return r.json().get("response", "").strip()
     except Exception as e:
@@ -632,13 +638,21 @@ def run():
                 action = 'wait'
             return action, args
 
-        # Build LLM portion of the queue
+        # Build LLM portion of the queue.
+        # Collect ALL non-wait actions regardless of position — with the domain-per-line
+        # format the LLM may output "wait" in the middle (e.g. Projects: wait, then
+        # Investments: upgrade_investment) and the old trailing-wait-only logic would
+        # silently drop everything after the first wait.
         llm_q = []
         for action_str in action_strs:
             action, args = _apply_guards(action_str)
-            if action != 'wait' or not llm_q:
+            if action != 'wait':
                 llm_q.append({"action": action, "args": args,
                               "thought": thought if not llm_q else ""})
+        if not llm_q:
+            # Every LLM line was wait (or nothing) — add one explicit wait so the
+            # relay and dashboard record that the LLM did run this tick.
+            llm_q = [{"action": "wait", "args": {}, "thought": thought}]
 
         # ── Merge and post ───────────────────────────────────────────────────────
         # Override actions first (higher deterministic priority), then LLM actions.
