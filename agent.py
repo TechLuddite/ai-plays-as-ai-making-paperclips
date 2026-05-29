@@ -143,26 +143,48 @@ PRICING NOTE:
 
 {ACTIONS}
 
-MANDATORY RESPONSE FORMAT — fill in every required line every tick:
+MANDATORY RESPONSE FORMAT — one Thought, then one Action line per active game domain.
+Use "nothing" when a domain needs no action this tick.
+Output the action name ONLY — no domain labels, no brackets, no inline comments.
 
-Thought: <your reasoning — cite specific numbers from the state>
-Action: <Projects:    buy_project:Name  OR  wait>
-Action: <Investments: upgrade_investment  OR  wait>   ← Stage 2 only (skip if portValue absent)
-Action: <Probes:      probe stat action  OR  wait>    ← Stage 3 only (skip if colonized absent)
-Action: <Pricing:     raise_price  OR  lower_price>   ← OPTIONAL, only if fast rules are failing
+  Thought: <cite specific numbers — what you see and why you're acting>
+  Action: <buy_project:Name  OR  nothing>     ← Projects — ALWAYS required
+  Action: <upgrade_investment  OR  nothing>   ← Investments — add when portValue in state
+  Action: <probe action  OR  nothing>         ← Probes — add when colonized in state
 
-CRITICAL RULES:
-1. Write the action name ONLY on each line. Do NOT include the domain label or brackets.
-   Correct:   Action: wait
-   Correct:   Action: buy_project:Hostile Takeover
-   Wrong:     Action: Projects: wait
-   Wrong:     Action: [buy_project:Name OR wait]
-2. The Projects line is ALWAYS required — output it every single tick.
-3. The Investments line is required whenever portValue appears in the state.
-4. The Probes line is required whenever colonized appears in the state.
-5. buy_project uses a colon: "buy_project:Exact Project Name" — nothing else on that line.
-6. Pricing is optional — the fast rules handle it. Only add a pricing Action if the rules
-   are clearly stuck (e.g. demand is 0% and falling and you need to intervene).
+EXAMPLES — copy this exact style:
+
+  Stage 1 (no investments yet):
+    Thought: Operations 8,200/10,000. No affordable projects visible. Fast rules handling price.
+    Action: nothing
+
+  Stage 2 (portValue visible in state):
+    Thought: Photonic Chip costs 11,000 ops, have 12,500. Yomi 320 > upgrade cost 100.
+    Action: buy_project:Photonic Chip
+    Action: upgrade_investment
+
+  Stage 2 — nothing to do this tick:
+    Thought: No affordable projects. Yomi=0, upgrade costs 100. Overrides handling investments.
+    Action: nothing
+    Action: nothing
+
+  Stage 3 (colonized visible, portValue visible):
+    Thought: colonized=38%. Rep=2 critically low, stalling replication. Yomi=0, can't upgrade.
+    Action: nothing
+    Action: nothing
+    Action: raise_probe_rep
+
+RULES:
+1. Action name ONLY — no domain labels, no brackets, no inline comments.
+   ✓  Action: nothing
+   ✓  Action: buy_project:Hostile Takeover
+   ✗  Action: Projects: nothing       ← WRONG — label not allowed
+   ✗  Action: [buy_project:Name]      ← WRONG — brackets not allowed
+2. The Projects Action line is ALWAYS required every single tick.
+3. Add the Investments Action line whenever portValue appears in the state.
+4. Add the Probes Action line whenever colonized appears in the state.
+5. buy_project: write the exact project name after the colon — nothing else on that line.
+6. Pricing (raise_price / lower_price) is optional — only if fast rules are clearly stuck.
 """
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -341,10 +363,19 @@ def parse_response(text):
             thought = line[8:].strip()
         elif line.lower().startswith("action:"):
             a = line[7:].strip()
-            # Strip inline comments — the LLM sometimes appends "# reason" after the action.
-            # e.g. "upgrade_investment  # costs 100 Yomi" → "upgrade_investment"
+            # Strip inline # comments: "upgrade_investment  # costs Yomi" → "upgrade_investment"
             if '#' in a:
                 a = a[:a.index('#')].strip()
+            # Strip parenthetical annotations: "wait  (Projects domain)" → "wait"
+            if '(' in a:
+                a = a[:a.index('(')].strip()
+            # Strip domain labels the LLM sometimes prepends to the action name when given
+            # a per-domain output template.  e.g.:
+            #   "Projects: wait"                  → "wait"
+            #   "Investments: upgrade_investment" → "upgrade_investment"
+            # Exception: buy_project uses a colon intentionally — never strip that.
+            if ':' in a and not a.lower().startswith('buy_project'):
+                a = a.split(':', 1)[1].strip()
             if a:
                 actions.append(a)
     return thought, actions or ["wait"]
@@ -359,7 +390,7 @@ def validate_action(action):
     valid = {
         # core
         'lower_price', 'raise_price', 'buy_marketing',
-        'add_processor', 'add_memory', 'buy_project', 'wait',
+        'add_processor', 'add_memory', 'buy_project', 'wait', 'nothing',
         'buy_wire', 'buy_autoclipper', 'buy_megaclipper', 'make_paperclip',
         # strategic modeling / autotourney
         'toggle_auto_tourney', 'set_strategy_random', 'run_tournament',
@@ -602,7 +633,8 @@ def run():
                 print(f"[WARN] LLM: {action} — investment system not active, substituting wait")
                 action = 'wait'
             # Override-managed actions — LLM must not choose these
-            if action in ('invest_deposit', 'set_invest_low', 'set_invest_med',
+            if action in ('invest_deposit', 'invest_withdraw',
+                          'set_invest_low', 'set_invest_med',
                           'set_invest_hi', 'toggle_auto_tourney'):
                 print(f"[WARN] LLM: {action} — override-managed, substituting wait")
                 action = 'wait'
@@ -639,19 +671,22 @@ def run():
             return action, args
 
         # Build LLM portion of the queue.
-        # Collect ALL non-wait actions regardless of position — with the domain-per-line
-        # format the LLM may output "wait" in the middle (e.g. Projects: wait, then
-        # Investments: upgrade_investment) and the old trailing-wait-only logic would
-        # silently drop everything after the first wait.
-        llm_q = []
+        # llm_display tracks every guarded action the LLM output (including "nothing")
+        #   so the terminal shows one entry per domain — the full picture every tick.
+        # llm_q only holds actions that should actually reach the relay: "nothing" and
+        #   "wait" are display-only and excluded from the posted queue.
+        llm_display = []   # all domain responses — shown in [ACT] line, stored in history
+        llm_q       = []   # relay-bound actions only (no nothing / wait)
         for action_str in action_strs:
             action, args = _apply_guards(action_str)
-            if action != 'wait':
+            label = action + (f":{args['name']}" if args.get('name') else "")
+            llm_display.append(label)
+            if action not in ('wait', 'nothing'):
                 llm_q.append({"action": action, "args": args,
                               "thought": thought if not llm_q else ""})
         if not llm_q:
-            # Every LLM line was wait (or nothing) — add one explicit wait so the
-            # relay and dashboard record that the LLM did run this tick.
+            # All domain lines were nothing/wait — post one 'wait' so the relay and
+            # dashboard record that the LLM tick ran (queue can't be empty).
             llm_q = [{"action": "wait", "args": {}, "thought": thought}]
 
         # ── Merge and post ───────────────────────────────────────────────────────
@@ -659,10 +694,9 @@ def run():
         queue = ov + llm_q
 
         ov_str  = " | ".join(o['action'] for o in ov)
-        llm_str = " | ".join(
-            l['action'] + (f":{l['args']['name']}" if l['args'].get('name') else "")
-            for l in llm_q if l['action'] != 'wait'
-        ) or "wait"
+        # llm_display shows every domain response including "nothing" entries —
+        # one entry per domain the LLM was asked to cover this tick.
+        llm_str = " | ".join(llm_display) if llm_display else "nothing"
         print(f"[THK] {thought}")
         if ov_str:
             print(f"[OVR] {ov_str}")

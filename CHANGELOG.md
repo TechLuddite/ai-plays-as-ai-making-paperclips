@@ -4,6 +4,100 @@ All notable changes to this project are documented here.
 
 ---
 
+## [2.0] - 2026-05-29
+
+### Added
+- **Multi-action queue** — relay now holds a FIFO queue instead of a single pending action.
+  Agent can post multiple actions per tick; browser dequeues one per poll.
+- **Parallel override architecture** — all domain overrides (trust, investment, AutoTourney,
+  tournament strategy) collect into `ov[]` without blocking the LLM. Every tick: overrides
+  fire *and* the LLM runs; the final queue is `ov + llm_q` posted together.
+- **Per-domain LLM output** — agent prompts for one `Action:` line per active game domain
+  (Projects, Investments, Probes) every tick so no domain is ever skipped.
+- **`nothing` action** — per-domain display-only no-op. Shows in `[ACT]` terminal output
+  and rolling history; never posted to relay. LLM uses this instead of `wait` when a
+  domain needs no action this tick.
+- **AutoTourney hard override** — if `autoTourneyOn` is in state and not "ON", fires
+  `toggle_auto_tourney` automatically before the LLM runs.
+- **Tournament strategy override** — if `stratPicker != '0'` (RANDOM not selected yet),
+  fires `set_strategy_random` automatically so Yomi accumulates from day one of Stage 2.
+- **Auto-withdraw override** — if cash < marketing cost but investment bankroll >
+  2× marketing cost, fires `invest_withdraw` and sets a 3-tick deposit cooldown to prevent
+  immediate re-deposit before fast rules can spend the freed cash.
+- **Investment strategy drift correction** — checks every tick; if current strategy ≠
+  target, corrects immediately (`med` until engine level 5, then `hi`).
+- **Quantum Computing automation** (`bridge.user.js`) — `autoQuantumCompute()` fires
+  `btnQcompute` on every 50ms fast-rule tick when `compDiv` is visible. Converts chip charge
+  to ops continuously; free and safe to spam.
+- **MegaClipper rate limit and demand guard** (`bridge.user.js`) — 5-second cooldown between
+  purchases; skips when unsold > 100 and demand < 400 to prevent cash drain after withdrawals.
+- **Processor cap** — processors hard-capped at 10 until memory ≥ 20, ensuring the ops
+  ceiling is large enough for core Stage 2 projects before regen speed is prioritised.
+- **Hard block: Xavier Re-initialization and Quantum Temporal Reversion** — added to
+  `NEVER_BUY` list in `_apply_guards()`. Xavier costs 100k creativity and resets all
+  processor/memory trust to zero; QTR resets game state backward. Both are catastrophic.
+- **`invest_deposit` and `invest_withdraw` both blocked from LLM** — fully override-managed;
+  LLM output choosing either is silently replaced with `wait`.
+- **Badge redesign** (`bridge.user.js`) — expanded from a minimal 220px label to a 380px
+  panel with rgba background, full state readout (stage, clips, funds, wire + LOW warning,
+  demand, unsold, yomi, ops, AutoTourney status), LLM thought (200 chars, word-wrapped),
+  and last 3 actions with tick numbers.
+
+### Fixed
+- **Marketing ReferenceError** (`bridge.user.js` — CRITICAL) — `demand` variable was not
+  in scope inside `autoMarketing()`. Marketing never fired in strict mode. Fixed by declaring
+  `const demand = getNum('demand')` inside the function.
+- **Marketing firing condition** — condition was `demand >= 400 || unsold < 40`, which was
+  always false in Stage 2 with hundreds of millions of unsold clips. Changed to `demand > 50`
+  (marketing raises the demand ceiling — gating it on high demand was backwards).
+- **Marketing total wealth buffer** — affordability now checks `funds + bankroll + stocks`
+  instead of cash only. Actual click still requires `funds >= cost` since the game needs cash.
+- **Quantum Computing ops drain** — reads `qCompDisplay` for negative ops; 1200ms cooldown
+  prevents runaway compute cycles that deplete the ops pool.
+- **`dispatchEvent` bubbling** — `{ bubbles: true, cancelable: true }` added for `investStrat`
+  and `stratPicker` selects so the game registers programmatic changes.
+- **LLM inline `#` comments in action names** — stripped in `parse_response()` before
+  validation (e.g. `upgrade_investment  # costs Yomi` → `upgrade_investment`).
+- **Domain labels in LLM action output** — `parse_response()` strips `"Projects: wait"` →
+  `"wait"` as a safety net; SYSTEM_PROMPT redesigned with concrete examples to prevent
+  domain labels appearing at source.
+- **Duplicate "3." numbering** in SYSTEM_PROMPT — renumbered priorities 1–5.
+- **Stage vs Phase terminology** — corrected throughout SYSTEM_PROMPT and ACTIONS string
+  (the game uses "Stage", not "Phase").
+
+### Changed
+- **SYSTEM_PROMPT intel overhaul** based on wiki-accurate game mechanics:
+  - Tournament mechanics corrected: tournaments *cost* ops and *award* Yomi. The LLM
+    previously believed tournaments cost Yomi, causing it to avoid them entirely (Yomi = 0
+    overnight despite AutoTourney being nominally active).
+  - Probe guidance improved: hazard remediation sweet spot 5–6 points, self-replication
+    priority for early Stage 3, when to raise combat vs drifters.
+  - Investment lifecycle clarified: `invest_deposit` moves all cash (all-or-nothing);
+    only bankroll (not stocks) can be withdrawn.
+  - Clear separation of what the agent handles automatically vs what the LLM decides.
+- **Response format redesign** — concrete stage-by-stage examples replace the
+  `<Domain: action OR wait>` template style that caused domain labels to appear in output.
+- **`num_predict`** increased 180 → 400 to give the LLM room for multi-line domain output.
+- **relay.py action queue** — replaced single `pending_action` string with FIFO
+  `action_queue = []`; accepts `{"queue": [...]}` (multi) and legacy single-action format.
+
+### Resolved from v1.9 known issues
+- AutoTourney never ran (Yomi = 0 overnight) ✅
+- Marketing severely underinvested despite large portfolio ✅
+- Investment risk drifting back to Low Risk ✅
+- Quantum Computing not automated ✅
+- Multi-action per tick ✅
+- Duplicate "3." in SYSTEM_PROMPT ✅
+
+### Still active
+- **Price strategy** — current rules push demand toward 500% (ceiling). Targeting ~100%
+  demand at a higher unit price may generate better revenue. Under investigation.
+- **Xavier Re-initialization appears twice** in the project list (game quirk).
+- **start.ps1 display quirk** — relay and agent share a terminal window. Use the manual
+  two-terminal start as the reliable alternative.
+
+---
+
 ## [1.9] - 2026-05-25
 
 ### Changed

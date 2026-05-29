@@ -85,24 +85,33 @@ Terminal output is intentionally human-readable:
 [14:22:01] TICK 47
 ────────────────────────────────────────────────────────────
 [OBS]
-  clips                  12,847
-  unsoldClips            3
-  demand                 266%  ↑ consider raise_price
-  funds                  $43.12
-  wire                   1,374
-  autoclippers           33
-  trust                  7  → add_memory or add_processor
-  memory                 6  (ops cap: 6,000)
-  processors             4
-  operations             3,301 / 6,000
-  availableProjects      Improved AutoClippers (750 ops)
+  clips                  717,469,831
+  unsoldClips            693,640,114  ↓ consider lower_price
+  demand                 428%  ↑ consider raise_price
+  funds                  $2,412,111.07
+  wire                   137,419
+  trust                  34  (fully allocated — none to spend)
+  memory                 21  (ops cap: 21,000)
+  processors             13
+  operations             16,016 / 21,000
+  yomi                   0
+  portValue              $13,514,506
+  investUpgradeCost      100
+  autoTourneyOn          ON
+  availableProjects      Full Monopoly (3,000 yomi, $10,000,000)
 
-[FB ] Last: lower_price ✓
+[FB ] Last: add_processor ✓
 
 [14:22:01] Querying qwen2.5...
-[THK] Demand is 266% with only 3 unsold clips — we should raise price to capture more revenue per clip.
-[ACT] raise_price  (347ms)
+[THK] Monopoly needs 3,000 yomi — we have 0. Yomi is 0 so can't upgrade investment either. Need AutoTourney running to build yomi.
+[OVR] add_memory
+[ACT] nothing | nothing  (203ms)
 ```
+
+Each `[ACT]` line shows one entry per active game domain — Projects first, then Investments
+(Stage 2), then Probes (Stage 3). `nothing` means the LLM explicitly considered that domain
+and had no action this tick. Hard overrides appear on the `[OVR]` line and always fire before
+LLM actions.
 
 A live web dashboard is also available at **http://localhost:5000** while the relay is running — shows state, tick history, thoughts, and action results without opening a terminal. The in-game badge (bottom-right corner) also shows phase, clip count, last action, and the LLM's reasoning in real time.
 
@@ -221,32 +230,27 @@ Browser-side constants are at the top of `bridge.user.js`:
 
 ## Limitations & Known Issues
 
-**Active (confirmed in live runs):**
-- **Quantum Computing not automated** — The Compute button (`btnQcompute`) is not being
-  clicked automatically. In Phase 2, Quantum Computing converts chip charge into ops — it
-  should be fired as a fast rule on every tick when the panel is visible. Currently zero
-  automation for this mechanic. Fix planned for v2.
-- **AutoTourney never starts** — Strategic Modeling and AutoTourney actions are wired but
-  the LLM doesn't reliably choose them. After an overnight run, Yomi was still 0. A hard
-  override (same pattern as trust/invest) is needed to ensure it's enabled automatically.
-- **Marketing underinvested in Phase 2** — The auto-buy buffer only checks available cash.
-  When funds are being deposited to investments, available cash stays low and marketing
-  upgrades stall — even with millions in the investment portfolio. Marketing Level 3 at $400
-  is absurd when total wealth is $77M+. Fix planned for v2.
-- **Investment risk drifts to Low** — The system sets High Risk when the bankroll is first
-  funded but doesn't re-check over time. After an overnight run the strategy had reverted
-  to Low Risk. Fix planned for v2.
-- **Price strategy** — Current rules keep demand near 500% (the ceiling). A better
-  approach may be targeting ~100% demand at higher price (more revenue per clip, slower
-  inventory buildup). Under investigation for v2.
+**Active:**
+- **Price strategy** — current rules push demand toward 500% (the ceiling). Targeting ~100%
+  demand at a higher unit price may generate more revenue per clip with slower inventory
+  buildup. Under investigation.
+- **Xavier Re-initialization appears twice** in the project list (game quirk, selector issue).
+- **`start.ps1` display quirk** — relay and agent share a terminal window. Use the manual
+  two-terminal start as the reliable alternative.
 
 **Stable / minor:**
-- Phase 3 probe design actions are fully wired but strategic guidance is still being
+- Stage 3 probe design actions are fully wired but strategic guidance is still being
   refined — this is the next active development area.
 - The LLM occasionally produces invalid actions; these are caught and substituted with `wait`.
 - If Ollama is slow to respond, the agent falls back to `wait` for that tick.
-- `start.ps1` has a display quirk (relay and agent both appear in same window). Known issue,
-  deferred to v2. Use the manual two-terminal start as the reliable alternative.
+
+**Resolved in v2.0** (listed here for context):
+- AutoTourney never started — Yomi was 0 after overnight runs despite AutoTourney being wired ✅
+- Quantum Computing not automated — Compute button was never clicked ✅
+- Marketing severely underinvested — demand ReferenceError + wrong firing condition ✅
+- Investment risk drifting back to Low Risk overnight ✅
+- LLM believing tournaments cost Yomi (they award Yomi; they cost ops) ✅
+- Xavier Re-initialization bought repeatedly, draining creativity and resetting trust to 0 ✅
 
 ---
 
@@ -309,37 +313,50 @@ It's a work in progress. But it works.
 
 ## Version History
 
-**v1.9.1 + patches (current)**
+**v2.0 (current)**
+
+Complete overhaul of agent intelligence and override architecture. All major Stage 2 blockers resolved.
+
+Key changes:
+- **Parallel override architecture** — all domain overrides (trust, investments, AutoTourney, tournament strategy) fire simultaneously with the LLM every tick; no domain is ever blocked by another
+- **Per-domain LLM output** — one `Action:` line per active game domain per tick (Projects, Investments, Probes); `nothing` is a display-only no-op for domains with nothing to do
+- **Multi-action queue** — relay holds a FIFO queue; agent can post multiple actions per tick
+- **SYSTEM_PROMPT intel overhaul** — tournament mechanics corrected (tournaments award Yomi, cost ops), probe strategy guidance based on wiki data, investment lifecycle clarified
+- **AutoTourney and tournament strategy auto-managed** by hard overrides — Yomi now accumulates from Stage 2 day one
+- **Marketing fully fixed** — demand scope bug resolved, firing condition corrected, total wealth buffer, auto-withdraw keeps cash available
+- **Xavier Re-initialization hard-blocked** — was bought repeatedly, draining creativity to −457k and resetting all trust to 0
+- Best run so far: 717M+ clips, Stage 2, $13.5M investment portfolio, Marketing Level 16
+
+**v1.9.1 + patches**
 
 *v1.9.1 bug fixes:*
-- Fixed price logic — demand check now takes priority over inventory count (was driving price to $0.01 at 17,000%+ demand)
-- Fixed trust override — was firing every tick even when trust was fully allocated, blocking the LLM entirely
-- Added LLM trust guard — hard block prevents add_memory/add_processor when trust is maxed
-- Added investment hard override — automatically sets High Risk and deposits when investment system becomes active
-- Rewrote system prompt — trust removed from LLM's job; investments are the #1 LLM priority in Phase 2
-- Added Microlattice Shapecasting to auto-buy queue
+- Fixed price logic — demand check now takes priority over inventory count
+- Fixed trust override — was firing every tick even when trust was fully allocated
+- Added investment hard override — automatically sets High Risk and deposits
+- Rewrote system prompt — trust removed from LLM's job; investments are #1 in Stage 2
 
-*Patches after v1.9.1 (on main, not yet tagged):*
-- Fixed `set_invest_hi` — must dispatch `change` event or the game ignores the value change
-- Fixed 'hi' vs 'high' mismatch in override guard and system prompt
-- Added guard to block invest actions before Algorithmic Trading is purchased
-- Added new game detection — clears LLM history when browser is reset mid-session
-- Added missing projects to auto-buy queue: spectral froth annealment, quantum foam annealment, megaclippers (project), photonic chip, new strategy: a100, hypnodrones
-- Wired AutoTourney: toggle_auto_tourney, set_strategy_random, run_tournament actions + state fields
-- Fixed marketing auto-buy — now fires when demand >= 400% regardless of unsold inventory level
-- Fixed price boundary — changed demand > 500 to demand >= 500 (was missing exactly-500% case)
-- Smarter price lowering — only lowers when demand < 200% (not when demand is healthy)
+*Patches after v1.9.1:*
+- Fixed `set_invest_hi` dispatchEvent; 'hi' vs 'high' mismatch fix
+- New game detection — clears LLM history on browser reset
+- Wired AutoTourney actions and state fields
+- Fixed marketing auto-buy firing condition; smarter price lowering
 
 **v1.9**
-- Action feedback loop, live dashboard, Phase 2/3 full wiring, config.json, start.ps1
+- Action feedback loop, live dashboard, Stage 2/3 full wiring, config.json, start.ps1
 
 **v1.0 – v1.8**
 - v1.0: zero paperclips produced (LLM hallucinated every action)
-- Progressive fixes: wire bankruptcy recovery, trust allocation, project priority queue, MegaClipper automation, Phase 2 computational resource management
+- Progressive fixes: wire bankruptcy recovery, trust allocation, project priority queue, MegaClipper automation, Stage 2 computational resource management
 - Best pre-v1.9 run: 1,600,000+ paperclips, zero bankruptcies, zero human UI interaction
 
 ---
 
 ## Where do we go from here?
 
-Next steps: refine Phase 3 probe strategy guidance, then get local models involved in a code review process, after that, models compete in the game.
+v2.0 resolved all the major Stage 2 blockers. The agent now manages investments, AutoTourney, marketing, and trust automatically — and the LLM covers every active game domain every single tick.
+
+What's next:
+- **Price strategy** — targeting ~100% demand at higher price vs the current ceiling-chasing behaviour. Stage 2 income experiment.
+- **Stage 3 probe strategy refinement** — the mechanics are wired; the strategic guidance for balancing rep/haz/fac/harv/wire/combat is still thin.
+- **Multi-model competition** — run two different local models simultaneously, compare their strategies and outcomes.
+- **start.ps1 display fix** — minor, but the relay and agent sharing a terminal is annoying.

@@ -62,39 +62,34 @@ In `bridge.user.js` (constants at top of file):
 - `ACTION_MS` — action poll interval in ms (default: `500`)
 
 ## Current Status
-- Phase 1: working well
-- Phase 2: functional but with known income/marketing issues (see Known Issues)
-- Phase 3 (space exploration, probe design): actions are wired, strategy guidance is thin
-- Best run: ~168M paperclips (Phase 2, overnight), $77M investments, zero bankruptcies
+- Stage 1: working well
+- Stage 2: all major blockers resolved in v2.0 — AutoTourney, marketing, investments, trust all auto-managed
+- Stage 3 (space exploration, probe design): actions are wired, strategy guidance still being refined
+- Best run: 717M+ paperclips (Stage 2), $13.5M investments, Marketing Level 16, zero bankruptcies
 
 ## Known Issues
 
-### MAJOR — Active problems confirmed in live runs
-- **Quantum Computing not automated**: `btnQcompute` is never clicked. The Compute button
-  should be fired on every fast-rule tick when `compDiv` is visible — it's free, safe,
-  and converts chip charge into ops. Add to `autoQuantumCompute()` in bridge.user.js.
-- **AutoTourney never runs**: Yomi = 0 after an overnight run. Actions exist
-  (toggle_auto_tourney, set_strategy_random) but the LLM never chooses them.
-  Fix: add a hard override in agent.py — if autoTourneyOn is in state and not "ON",
-  fire the setup actions before the LLM runs. Same pattern as trust/invest overrides.
-- **Marketing severely underinvested**: Marketing stayed Level 3 despite $77M in investments.
-  The auto-buy buffer only checks available cash. When cash is being deposited to investments,
-  available funds stay low and marketing never fires. Fix: use total wealth
-  (funds + investBankroll + investStocks) as the buffer signal, or auto-withdraw to fund marketing.
-- **Price strategy needs rethinking**: Current rules target demand near 500% (ceiling).
-  Better strategy may be to price for ~100% demand (higher price, fewer clips sold but
-  more revenue per clip, inventory clears over time). Needs experimentation.
-- **Investment risk drifts back to Low**: After being set to High Risk, overnight runs show
-  Low Risk. The override only sets High Risk once (when bankroll is empty). Fix: periodic
-  re-check that resets strategy if it drifts from 'hi'.
-- **Duplicate numbering in SYSTEM_PROMPT**: Both "PROJECTS" and "PHASE 3" are labeled
-  item 3. Fix by renumbering to 1-5.
+### ACTIVE
+- **Price strategy**: demand ~100% target vs current ceiling-chasing. Still unaddressed.
+- **Xavier Re-initialization appears twice** in project list (game quirk or selector issue).
+- **start.ps1 display quirk**: relay + agent both in same terminal. Deferred.
 
-### MINOR
-- LLM occasionally produces invalid actions — caught and substituted with `wait`
-- If Ollama is slow, agent falls back to `wait` for that tick
-- Xavier Re-initialization appears twice in project list (game quirk or selector issue)
-- start.ps1 display quirk (relay + agent both in same terminal) — deferred to v2
+### RESOLVED IN v2.0
+- AutoTourney never ran (Yomi = 0 overnight) ✅ — hard override fires toggle + strategy
+- Quantum Computing not automated ✅ — autoQuantumCompute() fast rule in bridge.user.js
+- Marketing demand ReferenceError ✅ — `demand` was out of scope in autoMarketing()
+- Marketing firing condition ✅ — was `demand >= 400 || unsold < 40`, now `demand > 50`
+- Marketing cash starvation ✅ — auto-withdraw + cooldown; total wealth buffer
+- Investment strategy drift ✅ — periodic correction override every tick
+- MegaClipper money drain ✅ — 5s rate limit + demand/inventory guard
+- AutoTourney strategy never set ✅ — stratPicker override
+- Xavier Re-initialization repeat-buying ✅ — NEVER_BUY hard block in _apply_guards()
+- LLM believing tournaments cost Yomi ✅ — SYSTEM_PROMPT corrected
+- Duplicate "3." in SYSTEM_PROMPT ✅ — renumbered 1–5
+- Multi-action per tick ✅ — relay FIFO queue; LLM outputs one Action per domain
+- Domain labels in LLM output ✅ — parse_response() strips them; examples redesigned
+- Quantum Computing ops drain ✅ — qCompDisplay check + 1200ms cooldown
+- dispatchEvent not bubbling ✅ — { bubbles: true, cancelable: true } on investStrat/stratPicker
 
 ## Key DOM IDs (confirmed from game HTML source)
 - Investments: `btnInvest` (Deposit), `btnWithdraw`, `#investStrat` (low/med/hi select),
@@ -114,13 +109,13 @@ In `bridge.user.js` (constants at top of file):
 - When adding new actions: update ACTIONS string, validate_action() set, AND bridge.user.js executeAction()
 
 ## Next Steps (Roadmap)
-1. AutoTourney hard override (Yomi = 0 overnight is a blocker)
-2. Quantum Computing automation (btnQcompute fast rule — trivial, high impact)
-3. Marketing buffer using total wealth instead of available cash
-4. Price strategy: target ~100% demand vs demand-ceiling chasing
-5. Investment risk drift fix (keep High Risk)
-6. Phase 3 probe strategy refinement
-7. Multi-action per tick (LLM outputs one decision per domain — discussed, scoped for v2)
+1. ~~AutoTourney hard override~~ ✅ done in v2.0
+2. ~~Quantum Computing automation~~ ✅ done in v2.0
+3. ~~Marketing buffer using total wealth~~ ✅ done in v2.0
+4. **Price strategy** — target ~100% demand vs ceiling-chasing (active)
+5. ~~Investment risk drift fix~~ ✅ done in v2.0
+6. **Stage 3 probe strategy refinement** — active next area
+7. ~~Multi-action per tick~~ ✅ done in v2.0
 8. Fix start.ps1 display quirk
 9. Multi-model competition mode
 
@@ -131,5 +126,6 @@ In `bridge.user.js` (constants at top of file):
 - Owner is non-coder — prefer clear, well-commented code over clever one-liners
 - `agent.log` is gitignored; it's a JSON-lines file written by agent.py each tick
 - The dashboard at `http://localhost:5000` is the preferred way to observe a run — no terminal needed
-- Hard overrides pattern: check condition → post_action() → log_tick() → sleep → continue
+- Hard overrides pattern (v2.0): collect into ov[] → LLM always runs → post_action_queue(ov + llm_q)
+  Only wire emergency uses the old continue pattern (hard exit before LLM)
 - Safe float parsing: safe_float(state.get('key'), fallback) handles $, %, commas, empty strings
