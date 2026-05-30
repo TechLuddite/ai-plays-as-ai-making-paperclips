@@ -230,10 +230,20 @@ Browser-side constants are at the top of `bridge.user.js`:
 
 ## Limitations & Known Issues
 
-**Active:**
-- **Price strategy** — current rules push demand toward 500% (the ceiling). Targeting ~100%
-  demand at a higher unit price may generate more revenue per clip with slower inventory
-  buildup. Under investigation.
+**Active — high priority:**
+- **Wrong tournament button — Yomi = 0** — The code has been clicking `btnRunTournament`
+  ("Run") which only displays strategy results and does not start a tournament or cost ops.
+  The correct button is `btnNewTournament` ("New Tournament") which calls `newTourney()`,
+  generates the payoff matrix, deducts ops, and awards Yomi. Fix pending for next session.
+- **LLM domain output incomplete** — The LLM currently outputs only 1–2 `Action:` lines
+  (Projects and sometimes Investments). The goal is one `Action:` line per visible game
+  domain per tick: Business, Manufacturing, Computational Resources, Quantum Computing,
+  Projects, Investments, and Strategic Modeling (7 domains in Stage 2; 8 with Probes in
+  Stage 3). This would show in the terminal `[ACT]` line and the dashboard every tick.
+- **Stage 2 project queue gap** — The fast-rule project priority list is missing all
+  Stage 2 manufacturing projects (Power Grid, Clip Factories, Harvester/Wire Drones, etc.).
+
+**Active — low priority:**
 - **Xavier Re-initialization appears twice** in the project list (game quirk, selector issue).
 - **`start.ps1` display quirk** — relay and agent share a terminal window. Use the manual
   two-terminal start as the reliable alternative.
@@ -251,6 +261,8 @@ Browser-side constants are at the top of `bridge.user.js`:
 - Investment risk drifting back to Low Risk overnight ✅
 - LLM believing tournaments cost Yomi (they award Yomi; they cost ops) ✅
 - Xavier Re-initialization bought repeatedly, draining creativity and resetting trust to 0 ✅
+- stratPicker not sticking — offsetParent check silently bailed; fixed with 50ms enforcement ✅
+- Stage 2 investActive detection — isVisible() unreliable; now uses portValue text ✅
 
 ---
 
@@ -322,10 +334,11 @@ Key changes:
 - **Per-domain LLM output** — one `Action:` line per active game domain per tick (Projects, Investments, Probes); `nothing` is a display-only no-op for domains with nothing to do
 - **Multi-action queue** — relay holds a FIFO queue; agent can post multiple actions per tick
 - **SYSTEM_PROMPT intel overhaul** — tournament mechanics corrected (tournaments award Yomi, cost ops), probe strategy guidance based on wiki data, investment lifecycle clarified
-- **AutoTourney and tournament strategy auto-managed** by hard overrides — Yomi now accumulates from Stage 2 day one
+- **AutoTourney and tournament strategy auto-managed** by hard overrides
 - **Marketing fully fixed** — demand scope bug resolved, firing condition corrected, total wealth buffer, auto-withdraw keeps cash available
 - **Xavier Re-initialization hard-blocked** — was bought repeatedly, draining creativity to −457k and resetting all trust to 0
-- Best run so far: 717M+ clips, Stage 2, $13.5M investment portfolio, Marketing Level 16
+- **Stage-aware price control** — Stage 2 lets clips accumulate (5 octillion needed for Stage 3); Stage 1 targets 200–500% demand with production-rate inventory cap
+- Best run so far: 12.3B clips, Stage 2, $118M investment portfolio, Marketing Level 20, 2400+ ticks
 
 **v1.9.1 + patches**
 
@@ -353,10 +366,12 @@ Key changes:
 
 ## Where do we go from here?
 
-v2.0 resolved all the major Stage 2 blockers. The agent now manages investments, AutoTourney, marketing, and trust automatically — and the LLM covers every active game domain every single tick.
+v2.0 resolved most of the Stage 2 blockers, but a code review session identified two significant remaining issues. The next session has a clear target list:
 
-What's next:
-- **Price strategy** — targeting ~100% demand at higher price vs the current ceiling-chasing behaviour. Stage 2 income experiment.
+What's next (priority order):
+- **Fix the tournament button** — `btnNewTournament` (not `btnRunTournament`) is what starts tournaments and earns Yomi. This single fix should unblock Yomi accumulation completely.
+- **Full per-domain LLM output** — expand SYSTEM_PROMPT so the LLM outputs one `Action:` line per visible game section every tick (Business, Manufacturing, Computational Resources, Quantum Computing, Projects, Investments, Strategic Modeling). Currently only 1–2 lines are produced.
+- **Stage 2 project queue** — add manufacturing projects (Clip Factories, Drones, etc.) to the fast-rule auto-buy list so Stage 2 infrastructure builds up automatically.
 - **Stage 3 probe strategy refinement** — the mechanics are wired; the strategic guidance for balancing rep/haz/fac/harv/wire/combat is still thin.
 - **Multi-model competition** — run two different local models simultaneously, compare their strategies and outcomes.
 - **start.ps1 display fix** — minor, but the relay and agent sharing a terminal is annoying.

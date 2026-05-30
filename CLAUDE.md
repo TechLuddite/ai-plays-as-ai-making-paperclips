@@ -47,9 +47,10 @@ Flask Relay → browser polls GET /action (includes thought) → executes click
 - Auto-run tournaments when ops ≥ 90% cap (`autoRunTournament`, 500ms interval)
 
 **LLM Agent (ReAct loop — every 2 seconds):**
-- Strategic pricing, trust allocation (processors vs memory)
-- Project prioritization for edge cases
-- Phase transition awareness
+- Strategic decisions across ALL visible game domains every tick
+- One Action line per domain (Business, Manufacturing, Computational Resources,
+  Quantum Computing, Projects, Investments, Strategic Modeling, Probes in Stage 3)
+- Phase transition awareness, project prioritization for edge cases
 - Any decision requiring tradeoff reasoning
 
 ## Key Config
@@ -65,13 +66,36 @@ In `bridge.user.js` (constants at top of file):
 
 ## Current Status
 - Stage 1: working well
-- Stage 2: all major blockers resolved in v2.0 — AutoTourney, marketing, investments, trust all auto-managed
+- Stage 2: major architecture in place; tournament Yomi still 0 (wrong button — see Known Issues)
 - Stage 3 (space exploration, probe design): actions are wired, strategy guidance still being refined
-- Best run: 717M+ paperclips (Stage 2), $13.5M investments, Marketing Level 16, zero bankruptcies
+- Best run: 12.3B clips, Stage 2, $118M investments, Marketing Level 20, 2400+ ticks
 
 ## Known Issues
 
-### ACTIVE
+### ACTIVE — HIGH PRIORITY
+- **Wrong tournament button (Yomi = 0 root cause)**: `autoRunTournament()` and
+  `executeAction('run_tournament')` click `btnRunTournament` → `runTourney()`. This is
+  the "Run" strategy-display button and does NOT start a tournament or cost ops.
+  The correct button is `btnNewTournament` → `newTourney()` — "New Tournament". Cost shown
+  in `#newTourneyCost` (1,000 ops × number of strategies). Fix in next session.
+
+- **LLM domain output incomplete**: LLM outputs only 1-2 Action lines (Projects + maybe
+  Investments). User wants one Action line per visible game domain every tick.
+  Stage 2 domains: Business, Manufacturing, Computational Resources, Quantum Computing,
+  Projects, Investments, Strategic Modeling (7 total). Stage 3 adds Space/Probes (8 total).
+  Desired terminal output: `[ACT] nothing | nothing | nothing | nothing | nothing | nothing | nothing`
+  Also needs to display correctly on the http://localhost:5000 dashboard.
+  Fix requires: expanding SYSTEM_PROMPT format examples + increasing num_predict.
+
+- **Stage 2 project priority gap**: bridge.user.js `PROJECT_PRIORITY` list is missing all
+  Stage 2 manufacturing projects (Power Grid, Clip Factories, Harvester/Wire Drones, etc.).
+  These must be added in the correct order so auto-buy fires them when affordable.
+
+- **LLM stuck in thought loop**: LLM repeats identical thought every tick ("PortValue visible,
+  Yomi=0, upgrade cost 100"). History fills with repeated wait entries. Will likely resolve
+  once wrong-button bug is fixed and Yomi starts flowing.
+
+### ACTIVE — LOW PRIORITY
 - **Xavier Re-initialization appears twice** in project list (game quirk or selector issue).
 - **start.ps1 display quirk**: relay + agent both in same terminal. Deferred.
 
@@ -93,14 +117,30 @@ In `bridge.user.js` (constants at top of file):
 - dispatchEvent not bubbling ✅ — { bubbles: true, cancelable: true } on investStrat/stratPicker
 - stratPicker not sticking (Yomi = 0 despite AutoTourney ON) ✅ — root cause: offsetParent check in
   executeAction silently bailed; fixed by removing check + adding 50ms fast-rule enforcement + 'input' event
-- Tournaments not running at ops cap ✅ — autoRunTournament() fast rule fires btnRunTournament at ≥90% ops
+- Tournaments not running at ops cap ✅ — autoRunTournament() fast rule fires at ≥90% ops
+  NOTE: Still clicking wrong button — partial fix only (see Active issues)
 - investActive Stage 2 detection ✅ — was isVisible('investmentEngine'), now !!getText('portValue')
 
-## Key DOM IDs (confirmed from game HTML source)
-- Investments: `btnInvest` (Deposit), `btnWithdraw`, `#investStrat` (low/med/hi select),
-  `investmentBankroll`, `secValue`, `portValue`, `btnImproveInvestments`
-- Quantum Computing: `btnQcompute`, `compDiv`
-- AutoTourney: `btnToggleAutoTourney`, `autoTourneyStatus`, `stratPicker`, `btnRunTournament`
+## Key DOM IDs (confirmed from game HTML source — authoritative)
+
+### CRITICAL — Tournament buttons (commonly confused):
+- `btnNewTournament` → `newTourney()` — **"New Tournament"** — STARTS tournament, costs ops,
+  generates payoff matrix, awards Yomi. This is what you click to RUN a tournament.
+- `btnRunTournament` → `runTourney()` — **"Run"** — display/result selection only.
+  Does NOT cost ops. Does NOT earn Yomi on its own.
+- `#newTourneyCost` — ops cost per tournament (= 1,000 × number of strategies available)
+- `#stratPicker` — select (values: '10'=Pick a Strat, '0'=RANDOM, more as unlocked)
+- `#autoTourneyStatus` — "ON" / "OFF"
+- `#yomiDisplay` — current Yomi amount
+
+### Investments:
+- `btnInvest` (Deposit), `btnWithdraw`, `#investStrat` (low/med/hi select)
+- `investmentBankroll`, `secValue`, `portValue`, `btnImproveInvestments`
+- `#investUpgradeCost` — Yomi cost for next investment engine upgrade
+
+### Other:
+- Quantum Computing: `btnQcompute`, `compDiv`, `qCompDisplay`
+- AutoTourney: `btnToggleAutoTourney`, `autoTourneyStatus`
 - Trust: `btnAddProc`, `btnAddMem`, `trust`, `processors`, `memory`
 - Phase 3 probes: `btnRaise/LowerProbeSpeed/Nav/Rep/Haz/Fac/Harv/Wire/Combat`,
   `btnIncreaseProbeTrust`, `probeTrustCostDisplay`
@@ -112,17 +152,19 @@ In `bridge.user.js` (constants at top of file):
 - No persistent memory — rolling window only; keep it stateless by design
 - Hard overrides fire before the LLM runs: emergency wire → trust → investments → AutoTourney
 - When adding new actions: update ACTIONS string, validate_action() set, AND bridge.user.js executeAction()
+- LLM should output one Action: line per visible game domain per tick (NOT just Projects)
 
 ## Next Steps (Roadmap)
 1. ~~AutoTourney hard override~~ ✅ done in v2.0
 2. ~~Quantum Computing automation~~ ✅ done in v2.0
 3. ~~Marketing buffer using total wealth~~ ✅ done in v2.0
-4. **Price strategy** — target ~100% demand vs ceiling-chasing (active)
+4. **Fix wrong tournament button** — change `btnRunTournament` → `btnNewTournament` everywhere
 5. ~~Investment risk drift fix~~ ✅ done in v2.0
-6. **Stage 3 probe strategy refinement** — active next area
+6. **Full per-domain LLM output** — expand SYSTEM_PROMPT to cover all 7 Stage 2 domains
 7. ~~Multi-action per tick~~ ✅ done in v2.0
-8. Fix start.ps1 display quirk
-9. Multi-model competition mode
+8. **Stage 2 manufacturing project queue** — add Stage 2 projects to PROJECT_PRIORITY
+9. Fix start.ps1 display quirk
+10. Multi-model competition mode
 
 ## Notes for Claude Code
 - Do not modify the ReAct output format — the parser depends on exact `Thought:`/`Action:` structure
@@ -134,3 +176,5 @@ In `bridge.user.js` (constants at top of file):
 - Hard overrides pattern (v2.0): collect into ov[] → LLM always runs → post_action_queue(ov + llm_q)
   Only wire emergency uses the old continue pattern (hard exit before LLM)
 - Safe float parsing: safe_float(state.get('key'), fallback) handles $, %, commas, empty strings
+- Game mechanics reference: see memory/game_mechanics.md — tournament buttons, investment PLR,
+  stage progression, all DOM IDs. Use this as ground truth instead of assumptions.
