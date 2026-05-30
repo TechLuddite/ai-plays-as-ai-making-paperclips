@@ -21,17 +21,19 @@ app = Flask(__name__)
 
 # ── Shared state ──────────────────────────────────────────────────────────────
 
-latest_state  = {}
-action_queue  = []    # FIFO queue of action dicts; browser dequeues one per poll
-last_result   = {}
-tick_history  = []    # list of dicts, capped at HISTORY_MAX
+latest_state         = {}
+action_queue         = []    # FIFO queue of action dicts; browser dequeues one per poll
+last_result          = {}
+tick_history         = []    # list of dicts, capped at HISTORY_MAX
+last_decisions_history = []   # rolling list of last 3 tick entries, newest last
 
 HISTORY_MAX = 50
 
-state_lock   = threading.Lock()
-action_lock  = threading.Lock()
-result_lock  = threading.Lock()
-history_lock = threading.Lock()
+state_lock     = threading.Lock()
+action_lock    = threading.Lock()
+result_lock    = threading.Lock()
+history_lock   = threading.Lock()
+decisions_lock = threading.Lock()
 
 _tick_counter = 0
 
@@ -78,6 +80,8 @@ def get_state():
         data = dict(latest_state)
     with result_lock:
         data['_lastResult'] = dict(last_result)
+    with decisions_lock:
+        data['_decisions_history'] = list(last_decisions_history)
     return jsonify(data)
 
 # ── Agent → Relay (action post) ───────────────────────────────────────────────
@@ -98,6 +102,15 @@ def receive_action():
     with action_lock:
         action_queue.extend(items)
 
+    # Extract per-domain decisions and overrides sent by agent.py for the dashboard
+    domain_decisions = data.get('domain_decisions', [])
+    overrides_str    = data.get('overrides', '')
+    with decisions_lock:
+        last_decisions_history.append({"domain_decisions": domain_decisions,
+                                       "overrides": overrides_str})
+        if len(last_decisions_history) > 3:
+            last_decisions_history.pop(0)
+
     # Log and record the primary (first) action only
     primary = items[0] if items else {}
     action  = primary.get('action', '')
@@ -112,14 +125,16 @@ def receive_action():
         clips = latest_state.get('clips')
 
     _push_history({
-        'ts':             datetime.now().strftime("%H:%M:%S"),
-        'phase':          phase,
-        'clips':          clips,
-        'thought':        thought,
-        'action':         action + (f" (+{len(items)-1})" if len(items) > 1 else ""),
-        'args':           args,
-        'result_success': None,
-        'result_note':    '',
+        'ts':              datetime.now().strftime("%H:%M:%S"),
+        'phase':           phase,
+        'clips':           clips,
+        'thought':         thought,
+        'action':          action + (f" (+{len(items)-1})" if len(items) > 1 else ""),
+        'args':            args,
+        'domain_decisions': domain_decisions,
+        'overrides':       overrides_str,
+        'result_success':  None,
+        'result_note':     '',
     })
     return jsonify({"ok": True})
 
@@ -202,6 +217,11 @@ DASHBOARD_HTML = """<!DOCTYPE html>
 </div>
 
 <div class="card">
+  <h2>LLM Decisions</h2>
+  <div id="decisions-wrap"><span class="dim">No decisions yet</span></div>
+</div>
+
+<div class="card">
   <h2>Tick History</h2>
   <table>
     <thead>
@@ -255,6 +275,53 @@ async function refresh() {
          </div>`
       : '';
     document.getElementById('metrics').innerHTML = cards + resultCard;
+
+    // LLM Decisions — static 8-domain table, last 3 ticks
+    const DEC_LABELS = ['Business','Manufacturing','Comp Resources','Quantum Computing',
+                        'Projects','Investments','Strat Modeling','Probes'];
+    const DEC_KEYS   = ['Business','Manufacturing','Computational Resources','Quantum Computing',
+                        'Projects','Investments','Strategic Modeling','Probes'];
+    const decHist = (state._decisions_history || []).slice().reverse(); // newest first
+    const AGE_LBL = ['latest', '−1', '−2'];
+    if (decHist.length) {
+      let hdr = '<tr><th style="text-align:left;min-width:54px"></th>';
+      DEC_LABELS.forEach(n => {
+        hdr += `<th style="text-align:center;padding:4px 6px">${n}</th>`;
+      });
+      hdr += '</tr>';
+      let rows = '';
+      for (let i = 0; i < 3; i++) {
+        const entry   = decHist[i];
+        const opacity = i === 0 ? '1' : i === 1 ? '0.6' : '0.35';
+        rows += `<tr style="opacity:${opacity}">`;
+        rows += `<td style="color:#8b949e;font-size:10px;padding:4px 6px;white-space:nowrap">${AGE_LBL[i]}</td>`;
+        DEC_KEYS.forEach(key => {
+          if (!entry) {
+            rows += `<td style="text-align:center;color:#30363d;padding:3px 5px">—</td>`;
+          } else {
+            const dec = (entry.domain_decisions || []).find(d => d.domain === key);
+            if (!dec) {
+              rows += `<td style="text-align:center;color:#f85149;font-size:11px;padding:3px 5px">LLM Failed</td>`;
+            } else {
+              const isAct = dec.action !== 'nothing' && dec.action !== 'wait';
+              const col   = isAct ? '#3fb950' : '#8b949e';
+              const wt    = isAct ? 'bold' : 'normal';
+              rows += `<td style="text-align:center;color:${col};font-weight:${wt};padding:3px 5px">${dec.action}</td>`;
+            }
+          }
+        });
+        rows += '</tr>';
+      }
+      const latestOvr = (decHist[0] && decHist[0].overrides || '').trim();
+      if (latestOvr) {
+        rows += `<tr><td style="color:#8b949e;font-size:10px;padding:4px 6px;white-space:nowrap">overrides</td>`;
+        rows += `<td colspan="${DEC_KEYS.length}" style="color:#f85149;padding:4px 6px">${latestOvr}</td></tr>`;
+      }
+      document.getElementById('decisions-wrap').innerHTML =
+        `<table style="width:100%;border-collapse:collapse;font-size:12px">${hdr}${rows}</table>`;
+    } else {
+      document.getElementById('decisions-wrap').innerHTML = '<span class="dim">No decisions yet</span>';
+    }
 
     // History table (newest first)
     document.getElementById('hist').innerHTML = [...hist].reverse().map(h =>

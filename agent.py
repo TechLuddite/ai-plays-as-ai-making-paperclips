@@ -229,10 +229,15 @@ def post_action(action, args=None, thought=""):
     except Exception as e:
         print(f"[{ts()}] ⚠ Could not post action: {e}")
 
-def post_action_queue(queue):
-    """Post a list of actions to the relay queue (LLM multi-action output)."""
+def post_action_queue(queue, domain_decisions=None, overrides_str=""):
+    """Post a list of actions to the relay queue plus per-domain decisions for the dashboard."""
+    payload = {"queue": queue}
+    if domain_decisions is not None:
+        payload["domain_decisions"] = domain_decisions
+    if overrides_str:
+        payload["overrides"] = overrides_str
     try:
-        requests.post(f"{RELAY_URL}/action", json={"queue": queue}, timeout=3)
+        requests.post(f"{RELAY_URL}/action", json=payload, timeout=3)
     except Exception as e:
         print(f"[{ts()}] ⚠ Could not post action queue: {e}")
 
@@ -478,6 +483,8 @@ def run():
 
     prev_clips = 0  # used to detect when a new game has been started
     withdraw_cooldown = 0  # ticks remaining where deposit is suppressed after a withdraw
+    domain_loop_tracker = {}  # domain → list of last 5 actions (updated after each LLM response)
+    domain_loop_warnings = ""  # injected into the NEXT tick's prompt
 
     while True:
         tick += 1
@@ -493,6 +500,8 @@ def run():
         if prev_clips > 10_000 and curr_clips < prev_clips * 0.1:
             print(f"[!!!] NEW GAME DETECTED (clips {prev_clips:,.0f} → {curr_clips:,.0f}) — clearing history")
             history.clear()
+            domain_loop_tracker.clear()
+            domain_loop_warnings = ""
         prev_clips = curr_clips
 
         divider()
@@ -609,6 +618,7 @@ def run():
             f"Current game state:\n{format_state(state)}\n"
             f"{result_text}\n"
             f"{history_text}\n"
+            f"{domain_loop_warnings}"
             f"What is your next strategic decision?"
         )
 
@@ -622,7 +632,7 @@ def run():
             if not ov:
                 ov.append({"action": "wait", "args": {}, "thought": "LLM unavailable"})
             print(f"[ACT] LLM unavailable — {len(ov)} override action(s)\n")
-            post_action_queue(ov)
+            post_action_queue(ov, overrides_str=" | ".join(o['action'] for o in ov))
             log_tick(tick, state, "LLM unavailable", ov[0]['action'], elapsed_ms)
             time.sleep(LOOP_DELAY)
             continue
@@ -717,9 +727,55 @@ def run():
         print(f"[ACT] {llm_str}  ({elapsed_ms}ms)")
         print()
 
+        # Build per-domain decision list for the dashboard.
+        # Domain order matches the Action: line order in SYSTEM_PROMPT.
+        active_domains = ["Projects"]
+        if state.get('portValue', ''):
+            active_domains.append("Investments")
+        if state.get('colonized'):
+            active_domains.append("Probes")
+        domain_decisions = [
+            {"domain": active_domains[i] if i < len(active_domains) else f"Domain {i+1}",
+             "action": label}
+            for i, label in enumerate(llm_display)
+        ]
+
+        # Update per-domain loop tracker and build warnings for the NEXT tick's prompt.
+        # We track the last 5 actions per domain and warn when the last 3 are identical.
+        for dd in domain_decisions:
+            d = dd['domain']
+            a = dd['action']
+            if d not in domain_loop_tracker:
+                domain_loop_tracker[d] = []
+            domain_loop_tracker[d].append(a)
+            if len(domain_loop_tracker[d]) > 5:
+                domain_loop_tracker[d].pop(0)
+
+        warn_lines = []
+        for d, actions in domain_loop_tracker.items():
+            if len(actions) >= 3 and len(set(actions[-3:])) == 1:
+                repeated = actions[-1]
+                run = sum(1 for a in reversed(actions) if a == repeated)
+                if repeated in ('wait', 'nothing'):
+                    tip = "Is there a project that just became affordable? A probe stat to adjust? Or confirm 'nothing' is correct."
+                else:
+                    tip = f"Is '{repeated}' still the right call, or has the situation changed?"
+                warn_lines.append(
+                    f"  ⚠ {d}: '{repeated}' × {run} consecutive ticks. {tip}"
+                )
+        if warn_lines:
+            domain_loop_warnings = (
+                "\n⚠ LOOP ALERT — same decision repeated per domain:\n"
+                + "\n".join(warn_lines)
+                + "\nBreak out by checking what changed or confirming it's genuinely unchanged.\n\n"
+            )
+            print(f"[LOP] {'  |  '.join(warn_lines)}")
+        else:
+            domain_loop_warnings = ""
+
         primary_str = queue[0]['action'] if queue else "wait"
         history.append((thought, llm_str))
-        post_action_queue(queue)
+        post_action_queue(queue, domain_decisions=domain_decisions, overrides_str=ov_str)
         ov_label = "+".join(o['action'] for o in ov) if ov else None
         log_tick(tick, state, thought, primary_str, elapsed_ms, override=ov_label)
 

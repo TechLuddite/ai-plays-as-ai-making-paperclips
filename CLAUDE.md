@@ -66,21 +66,15 @@ In `bridge.user.js` (constants at top of file):
 
 ## Current Status
 - Stage 1: working well
-- Stage 2: major architecture in place; tournament Yomi still 0 (wrong button — see Known Issues)
+- Stage 2: tournament button fixed (Yomi now generates); per-domain loop detection active
 - Stage 3 (space exploration, probe design): actions are wired, strategy guidance still being refined
-- Best run: 12.3B clips, Stage 2, $118M investments, Marketing Level 20, 2400+ ticks
+- Best run: 13.4B clips, Stage 2, ~$18M investments, Marketing Level 20, 230+ ticks
 
 ## Known Issues
 
 ### ACTIVE — HIGH PRIORITY
-- **Wrong tournament button (Yomi = 0 root cause)**: `autoRunTournament()` and
-  `executeAction('run_tournament')` click `btnRunTournament` → `runTourney()`. This is
-  the "Run" strategy-display button and does NOT start a tournament or cost ops.
-  The correct button is `btnNewTournament` → `newTourney()` — "New Tournament". Cost shown
-  in `#newTourneyCost` (1,000 ops × number of strategies). Fix in next session.
-
-- **LLM domain output incomplete**: LLM outputs only 1-2 Action lines (Projects + maybe
-  Investments). User wants one Action line per visible game domain every tick.
+- **LLM domain output incomplete**: LLM outputs only 2-3 Action lines (Projects + Investments
+  + maybe Probes). User wants one Action line per visible game domain every tick.
   Stage 2 domains: Business, Manufacturing, Computational Resources, Quantum Computing,
   Projects, Investments, Strategic Modeling (7 total). Stage 3 adds Space/Probes (8 total).
   Desired terminal output: `[ACT] nothing | nothing | nothing | nothing | nothing | nothing | nothing`
@@ -91,15 +85,16 @@ In `bridge.user.js` (constants at top of file):
   Stage 2 manufacturing projects (Power Grid, Clip Factories, Harvester/Wire Drones, etc.).
   These must be added in the correct order so auto-buy fires them when affordable.
 
-- **LLM stuck in thought loop**: LLM repeats identical thought every tick ("PortValue visible,
-  Yomi=0, upgrade cost 100"). History fills with repeated wait entries. Will likely resolve
-  once wrong-button bug is fixed and Yomi starts flowing.
-
 ### ACTIVE — LOW PRIORITY
 - **Xavier Re-initialization appears twice** in project list (game quirk or selector issue).
 - **start.ps1 display quirk**: relay + agent both in same terminal. Deferred.
 
-### RESOLVED IN v2.0
+### RESOLVED IN v2.0 / v2.1
+- Wrong tournament button (Yomi = 0 root cause) ✅ — both `autoRunTournament()` and
+  `executeAction('run_tournament')` now click `btnNewTournament` → `newTourney()`; also
+  reads `#newTourneyCost` to confirm ops before firing; cooldown raised to 5s
+- LLM stuck in thought loop ✅ — per-domain loop detection: after 3 consecutive identical
+  decisions on any domain, `[LOP]` warning injected into next prompt, prompting LLM to break out
 - AutoTourney never ran (Yomi = 0 overnight) ✅ — hard override fires toggle + strategy
 - Quantum Computing not automated ✅ — autoQuantumCompute() fast rule in bridge.user.js
 - Marketing demand ReferenceError ✅ — `demand` was out of scope in autoMarketing()
@@ -110,15 +105,11 @@ In `bridge.user.js` (constants at top of file):
 - AutoTourney strategy never set ✅ — stratPicker override
 - Xavier Re-initialization repeat-buying ✅ — NEVER_BUY hard block in _apply_guards()
 - LLM believing tournaments cost Yomi ✅ — SYSTEM_PROMPT corrected
-- Duplicate "3." in SYSTEM_PROMPT ✅ — renumbered 1–5
 - Multi-action per tick ✅ — relay FIFO queue; LLM outputs one Action per domain
 - Domain labels in LLM output ✅ — parse_response() strips them; examples redesigned
 - Quantum Computing ops drain ✅ — qCompDisplay check + 1200ms cooldown
 - dispatchEvent not bubbling ✅ — { bubbles: true, cancelable: true } on investStrat/stratPicker
-- stratPicker not sticking (Yomi = 0 despite AutoTourney ON) ✅ — root cause: offsetParent check in
-  executeAction silently bailed; fixed by removing check + adding 50ms fast-rule enforcement + 'input' event
-- Tournaments not running at ops cap ✅ — autoRunTournament() fast rule fires at ≥90% ops
-  NOTE: Still clicking wrong button — partial fix only (see Active issues)
+- stratPicker not sticking ✅ — offsetParent check removed; 50ms fast-rule enforcement; 'input' event
 - investActive Stage 2 detection ✅ — was isVisible('investmentEngine'), now !!getText('portValue')
 
 ## Key DOM IDs (confirmed from game HTML source — authoritative)

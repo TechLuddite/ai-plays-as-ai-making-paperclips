@@ -359,29 +359,31 @@
     }
 
     // ── Auto-run tournament ───────────────────────────────────────────────────
-    // Fires btnRunTournament directly when ops hit 90%+ of max capacity.
-    // Tournaments cost 1,000 ops and award Yomi.
-    // This catches the case where AutoTourney is ON but strategy wasn't sticking.
-    // Uses direct .click() (not clickBtn) to bypass the offsetParent visibility
-    // check — btnRunTournament may report hidden inside strategyEngine.
+    // Fires btnNewTournament when ops hit 90%+ of max capacity.
+    // btnNewTournament → newTourney() — STARTS a tournament, costs ops, awards Yomi.
+    // (btnRunTournament → runTourney() is display-only and does NOT award Yomi.)
+    // Uses direct .click() to bypass the offsetParent visibility check —
+    // buttons inside strategyEngine may report hidden even when functional.
 
     let lastTournamentRun = 0;
 
     function autoRunTournament() {
         if (!isVisible('strategyEngine')) return;
-        if (Date.now() - lastTournamentRun < 2000) return;
+        if (Date.now() - lastTournamentRun < 5000) return;
 
-        const opsText = getText('operations') || '';
-        const parts   = opsText.split('/').map(s => parseInt(s.replace(/[^0-9]/g, '').trim()));
-        const currOps = isNaN(parts[0]) ? 0 : parts[0];
-        const maxOps  = isNaN(parts[1]) ? 1 : parts[1];
+        const opsText    = getText('operations') || '';
+        const parts      = opsText.split('/').map(s => parseInt(s.replace(/[^0-9]/g, '').trim()));
+        const currOps    = isNaN(parts[0]) ? 0 : parts[0];
+        const maxOps     = isNaN(parts[1]) ? 1 : parts[1];
+        const costText   = getText('newTourneyCost') || '1000';
+        const tourneyCost = parseInt(costText.replace(/[^0-9]/g, '')) || 1000;
 
-        if (maxOps > 100 && currOps >= maxOps * 0.9) {
-            const btn = document.getElementById('btnRunTournament');
+        if (maxOps > 100 && currOps >= maxOps * 0.9 && currOps >= tourneyCost) {
+            const btn = document.getElementById('btnNewTournament');
             if (btn && !btn.disabled) {
                 btn.click();
                 lastTournamentRun = Date.now();
-                console.log(`[AGENT] Tournament run (ops ${currOps}/${maxOps})`);
+                console.log(`[AGENT] New tournament started (ops ${currOps}/${maxOps}, cost ${tourneyCost})`);
             }
         }
     }
@@ -546,11 +548,11 @@
 
             // ── Strategic Modeling / AutoTourney ──────────────────────────────
             case 'run_tournament': {
-                // Use direct .click() — btnRunTournament may have offsetParent=null
-                // inside strategyEngine even when clickable.
-                const btn = document.getElementById('btnRunTournament');
-                if (btn && !btn.disabled) { btn.click(); success = true; note = 'tournament run'; }
-                else { note = 'run tournament button not found or disabled'; }
+                // btnNewTournament → newTourney() starts a tournament (costs ops, earns Yomi).
+                // Use direct .click() — button may have offsetParent=null inside strategyEngine.
+                const btn = document.getElementById('btnNewTournament');
+                if (btn && !btn.disabled) { btn.click(); success = true; note = 'new tournament started'; }
+                else { note = 'btnNewTournament not found or disabled'; }
                 break;
             }
             case 'toggle_auto_tourney': {
