@@ -235,9 +235,7 @@
     function autoSpendOnProjects() {
         if (Date.now() - lastProjectClick < 1500) return;
 
-        const opsText      = getText('operations') || '';
-        const opsParts     = opsText.split('/').map(s => parseInt(s.replace(/,/g,'').trim()));
-        const currentOps   = isNaN(opsParts[0]) ? 0 : opsParts[0];
+        const currentOps   = getNum('operations', 0);  // #operations is current ops only
         const currentCrt   = getNum('creativity');
         const currentTrust = parseInt(getText('trust') || '0');
 
@@ -371,10 +369,11 @@
         if (!isVisible('strategyEngine')) return;
         if (Date.now() - lastTournamentRun < 5000) return;
 
-        const opsText    = getText('operations') || '';
-        const parts      = opsText.split('/').map(s => parseInt(s.replace(/[^0-9]/g, '').trim()));
-        const currOps    = isNaN(parts[0]) ? 0 : parts[0];
-        const maxOps     = isNaN(parts[1]) ? 1 : parts[1];
+        // #operations and #maxOps are separate DOM elements — read them independently.
+        // Do NOT split getText('operations') on '/' — it only contains the current ops,
+        // not the combined "current / max" string (that's only constructed in getState()).
+        const currOps    = getNum('operations', 0);
+        const maxOps     = getNum('maxOps', 0);
         const costText   = getText('newTourneyCost') || '1000';
         const tourneyCost = parseInt(costText.replace(/[^0-9]/g, '')) || 1000;
 
