@@ -73,10 +73,10 @@ Python restarts alone do NOT update the browser script.
 
 ## Current Status
 - Stage 1: working well
-- Stage 2: tournament button fixed in code; per-domain loop detection active; two diagnosed
-  bugs pending fix (LLM domain output, production starvation — see Known Issues)
+- Stage 2: tournaments fully working (Yomi flowing, investment engine auto-upgrading to Level 3+);
+  two diagnosed bugs pending fix (LLM domain output, production starvation — see Known Issues)
 - Stage 3 (space exploration, probe design): actions are wired, strategy guidance still being refined
-- Best run: 13.5B clips, Stage 2, ~$27M investments, Marketing Level 20, 102+ ticks
+- Best run: 13.5B+ clips, Stage 2, investment engine Level 3, Yomi accumulating, Marketing Level 20
 
 ## Known Issues
 
@@ -149,7 +149,13 @@ See game_mechanics.md for the correct ordered list.
 - **Xavier Re-initialization appears twice** in project list (game quirk or selector issue).
 - **start.ps1 display quirk**: relay + agent both in same terminal. Deferred.
 
-### RESOLVED IN v2.0 / v2.1
+### RESOLVED IN v2.0 / v2.1 / v2.2
+- Tournament ops parsing (maxOps always = 1) ✅ — `getText('operations')` has no slash;
+  fixed to `getNum('operations')` + `getNum('maxOps')` as separate DOM reads
+- Tournament two-step cycle ✅ — confirmed both buttons needed: New Tournament generates
+  matrix, Run (1.5s later) applies strategy and awards Yomi; `pendingRunAt` pattern in
+  `autoRunTournament()`; `setTimeout` in `executeAction('run_tournament')`
+  Confirmed working: Yomi flowing, investment engine auto-upgraded to Level 3
 - Wrong tournament button (Yomi = 0 root cause) ✅ — both `autoRunTournament()` and
   `executeAction('run_tournament')` now click `btnNewTournament` → `newTourney()`; also
   reads `#newTourneyCost` to confirm ops before firing; cooldown raised to 5s
@@ -174,12 +180,14 @@ See game_mechanics.md for the correct ordered list.
 
 ## Key DOM IDs (confirmed from game HTML source — authoritative)
 
-### CRITICAL — Tournament buttons (commonly confused):
-- `btnNewTournament` → `newTourney()` — **"New Tournament"** — STARTS tournament, costs ops,
-  generates payoff matrix, awards Yomi. This is what you click to RUN a tournament.
-- `btnRunTournament` → `runTourney()` — **"Run"** — display/result selection only.
-  Does NOT cost ops. Does NOT earn Yomi on its own.
+### CRITICAL — Tournament two-step cycle (both buttons required, in sequence):
+1. `btnNewTournament` → `newTourney()` — **"New Tournament"** — costs ops, generates payoff
+   matrix, tournament "in progress." Does NOT award Yomi by itself.
+2. `btnRunTournament` → `runTourney()` — **"Run"** — applies the selected strategy ~1.5s
+   after New Tournament. AWARDS Yomi. Both steps are required.
 - `#newTourneyCost` — ops cost per tournament (= 1,000 × number of strategies available)
+- `#operations` — current ops only (integer); `#maxOps` — max ops (separate element)
+  DO NOT split getText('operations') on '/' — it has no slash. Read both elements independently.
 - `#stratPicker` — select (values: '10'=Pick a Strat, '0'=RANDOM, more as unlocked)
 - `#autoTourneyStatus` — "ON" / "OFF"
 - `#yomiDisplay` — current Yomi amount
@@ -209,13 +217,16 @@ See game_mechanics.md for the correct ordered list.
 1. ~~AutoTourney hard override~~ ✅ done in v2.0
 2. ~~Quantum Computing automation~~ ✅ done in v2.0
 3. ~~Marketing buffer using total wealth~~ ✅ done in v2.0
-4. **Fix wrong tournament button** — change `btnRunTournament` → `btnNewTournament` everywhere
+4. ~~Fix tournament system~~ ✅ done in v2.2 — ops parsing + two-step cycle + correct button
 5. ~~Investment risk drift fix~~ ✅ done in v2.0
-6. **Full per-domain LLM output** — expand SYSTEM_PROMPT to cover all 7 Stage 2 domains
+6. **Full per-domain LLM output** — Fix A: populate missing domains with "auto" in agent.py;
+   Fix B (future): expand SYSTEM_PROMPT to 7 domains with num_predict increase
 7. ~~Multi-action per tick~~ ✅ done in v2.0
-8. **Stage 2 manufacturing project queue** — add Stage 2 projects to PROJECT_PRIORITY
-9. Fix start.ps1 display quirk
-10. Multi-model competition mode
+8. **Production starvation fix** — wire-starvation withdraw override + replace marketing-cost
+   trigger with wire-price-based cash buffer (see Known Issues for exact code)
+9. **Stage 2 manufacturing project queue** — add Stage 2 projects to PROJECT_PRIORITY
+10. Fix start.ps1 display quirk
+11. Multi-model competition mode
 
 ## Notes for Claude Code
 - Do not modify the ReAct output format — the parser depends on exact `Thought:`/`Action:` structure
