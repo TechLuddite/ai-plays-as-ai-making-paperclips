@@ -4,6 +4,68 @@ All notable changes to this project are documented here.
 
 ---
 
+## [2.2] - 2026-05-30
+
+### Fixed
+- **Tournament ops parsing** (`bridge.user.js` — CRITICAL) — `autoRunTournament()` split
+  `getText('operations')` on `'/'` expecting `"21,000 / 21,000"`. But `#operations` is only
+  the current ops (`"21,000"`); `#maxOps` is a separate DOM element. `parts[1]` was always
+  `undefined`, so `maxOps` fell back to `1`, making `maxOps > 100` permanently false.
+  `newTourney()` was never called in any run. Fixed by reading `getNum('operations')` and
+  `getNum('maxOps')` as independent element reads.
+- **Tournament two-step cycle** (`bridge.user.js` — CRITICAL) — confirmed from live gameplay:
+  both buttons are required in sequence to earn Yomi.
+  1. `btnNewTournament` → `newTourney()`: spends ops, generates payoff matrix ("in progress")
+  2. `btnRunTournament` → `runTourney()`: applies selected strategy ~1.5s later, awards Yomi
+  `autoRunTournament()` now sets `pendingRunAt` after clicking New Tournament; fires Run on
+  the next 500ms interval once the delay expires. `executeAction('run_tournament')` uses
+  `setTimeout(1500)` for the same sequence.
+  Confirmed working: Yomi flowing, investment engine auto-upgraded to Level 3.
+
+### Changed
+- `autoSpendOnProjects()` ops read simplified — was splitting a string that never had a slash;
+  now uses `getNum('operations', 0)` directly, matching the rest of the codebase.
+
+---
+
+## [2.1] - 2026-05-30
+
+### Added
+- **Dashboard LLM Decisions card** (`relay.py`) — new card between Live State and Tick History
+  showing a static 8-column table (Business, Manufacturing, Computational Resources, Quantum
+  Computing, Projects, Investments, Strategic Modeling, Probes) with the last 3 ticks of LLM
+  decisions per domain. Opacity fades by age (latest full, older dimmed). Domain missing from
+  `domain_decisions` shows "LLM Failed" in red; real actions green; nothing/wait dim gray.
+- **Per-domain loop detection** (`agent.py`) — `domain_loop_tracker` dict tracks the last 5
+  actions per domain. After 3 consecutive identical decisions on any domain, `[LOP]` prints in
+  terminal and a `⚠ LOOP ALERT` block injects into the next tick's prompt with targeted
+  break-out guidance. Resets cleanly on new-game detection.
+- **Deployment checklist** (`CLAUDE.md`) — documents that Tampermonkey must be manually
+  updated (copy-paste entire file) after every `bridge.user.js` change. Python restarts alone
+  do not affect the browser script.
+
+### Fixed
+- **Tournament button** (`bridge.user.js`) — `autoRunTournament()` and
+  `executeAction('run_tournament')` were clicking `btnRunTournament` ("Run"), which only
+  displays strategy results and does not start a tournament. Changed to `btnNewTournament`.
+  Also reads `#newTourneyCost` to confirm ops are sufficient; cooldown raised 2s → 5s.
+- **stratPicker not sticking** (`bridge.user.js`) — `set_strategy_random` action was checking
+  `el.offsetParent === null` and bailing silently; removed check. Added both `'change'` and
+  `'input'` events. 50ms fast-rule enforcement in `runFastRules()` wins over game render resets.
+- **`investActive` Stage 2 detection** (`bridge.user.js`) — was `isVisible('investmentEngine')`
+  (unreliable; div reports hidden). Changed to `!!getText('portValue')` which is reliably
+  present when investments are active.
+
+### Changed
+- `post_action_queue()` (`agent.py`) — accepts `domain_decisions` list and `overrides_str`
+  kwargs; posts them in the action payload for the relay dashboard to consume.
+- Relay `receive_action()` — extracts and stores `domain_decisions` + `overrides` in a rolling
+  3-entry `last_decisions_history`; attached as `_decisions_history` on `GET /state`.
+- `active_domains` logic in main loop — builds ["Projects", "Investments", "Probes"] per stage
+  and zips with `llm_display` to populate `domain_decisions` for the dashboard.
+
+---
+
 ## [2.0] - 2026-05-29
 
 ### Added
