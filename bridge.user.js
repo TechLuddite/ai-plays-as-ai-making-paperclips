@@ -357,31 +357,45 @@
     }
 
     // ── Auto-run tournament ───────────────────────────────────────────────────
-    // Fires btnNewTournament when ops hit 90%+ of max capacity.
-    // btnNewTournament → newTourney() — STARTS a tournament, costs ops, awards Yomi.
-    // (btnRunTournament → runTourney() is display-only and does NOT award Yomi.)
-    // Uses direct .click() to bypass the offsetParent visibility check —
-    // buttons inside strategyEngine may report hidden even when functional.
+    // Full two-step tournament cycle:
+    //   Step 1 — btnNewTournament → newTourney(): spends ops, generates payoff matrix,
+    //            tournament is now "in progress"
+    //   Step 2 — btnRunTournament → runTourney(): applies the selected strategy and
+    //            AWARDS YOMI — this step is also required, not optional
+    // Both buttons are needed in sequence. The strategy must be set (RANDOM enforced
+    // by the fast rule) before Step 2 is clicked.
 
-    let lastTournamentRun = 0;
+    let lastTournamentRun  = 0;
+    let pendingRunAt       = 0;   // timestamp after which we should click Run
 
     function autoRunTournament() {
         if (!isVisible('strategyEngine')) return;
+
+        // Step 2: if we recently started a tournament, wait briefly then click Run
+        if (pendingRunAt > 0 && Date.now() >= pendingRunAt) {
+            const runBtn = document.getElementById('btnRunTournament');
+            if (runBtn && !runBtn.disabled) {
+                runBtn.click();
+                console.log('[AGENT] Tournament Run clicked — Yomi awarded');
+            }
+            pendingRunAt = 0;  // clear regardless — don't retry if button wasn't ready
+        }
+
+        // Step 1: start a new tournament when ops are high enough
         if (Date.now() - lastTournamentRun < 5000) return;
 
         // #operations and #maxOps are separate DOM elements — read them independently.
-        // Do NOT split getText('operations') on '/' — it only contains the current ops,
-        // not the combined "current / max" string (that's only constructed in getState()).
-        const currOps    = getNum('operations', 0);
-        const maxOps     = getNum('maxOps', 0);
-        const costText   = getText('newTourneyCost') || '1000';
+        const currOps     = getNum('operations', 0);
+        const maxOps      = getNum('maxOps', 0);
+        const costText    = getText('newTourneyCost') || '1000';
         const tourneyCost = parseInt(costText.replace(/[^0-9]/g, '')) || 1000;
 
         if (maxOps > 100 && currOps >= maxOps * 0.9 && currOps >= tourneyCost) {
-            const btn = document.getElementById('btnNewTournament');
-            if (btn && !btn.disabled) {
-                btn.click();
+            const newBtn = document.getElementById('btnNewTournament');
+            if (newBtn && !newBtn.disabled) {
+                newBtn.click();
                 lastTournamentRun = Date.now();
+                pendingRunAt      = Date.now() + 1500;  // click Run 1.5s later
                 console.log(`[AGENT] New tournament started (ops ${currOps}/${maxOps}, cost ${tourneyCost})`);
             }
         }
@@ -547,11 +561,19 @@
 
             // ── Strategic Modeling / AutoTourney ──────────────────────────────
             case 'run_tournament': {
-                // btnNewTournament → newTourney() starts a tournament (costs ops, earns Yomi).
-                // Use direct .click() — button may have offsetParent=null inside strategyEngine.
-                const btn = document.getElementById('btnNewTournament');
-                if (btn && !btn.disabled) { btn.click(); success = true; note = 'new tournament started'; }
-                else { note = 'btnNewTournament not found or disabled'; }
+                // Full two-step: New Tournament (generates matrix) → Run (awards Yomi).
+                // Both buttons are needed in sequence.
+                const newBtn = document.getElementById('btnNewTournament');
+                const runBtn = document.getElementById('btnRunTournament');
+                if (newBtn && !newBtn.disabled) {
+                    newBtn.click();
+                    // Click Run after 1.5s — let the game process the new tournament first
+                    setTimeout(() => { if (runBtn && !runBtn.disabled) runBtn.click(); }, 1500);
+                    success = true;
+                    note    = 'tournament started; Run scheduled in 1.5s';
+                } else {
+                    note = 'btnNewTournament not found or disabled';
+                }
                 break;
             }
             case 'toggle_auto_tourney': {
