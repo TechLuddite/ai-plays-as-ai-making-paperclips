@@ -64,26 +64,86 @@ In `bridge.user.js` (constants at top of file):
 - `STATE_MS` — state push interval in ms (default: `2000`)
 - `ACTION_MS` — action poll interval in ms (default: `500`)
 
+## Deployment Checklist (run every time bridge.user.js changes)
+1. Copy bridge.user.js → Tampermonkey editor → Save  ← easy to forget; causes Yomi=0
+2. Restart relay.py (new terminal)
+3. Restart agent.py (new terminal)
+4. Reload game page in Chrome
+Python restarts alone do NOT update the browser script.
+
 ## Current Status
 - Stage 1: working well
-- Stage 2: tournament button fixed (Yomi now generates); per-domain loop detection active
+- Stage 2: tournament button fixed in code; per-domain loop detection active; two diagnosed
+  bugs pending fix (LLM domain output, production starvation — see Known Issues)
 - Stage 3 (space exploration, probe design): actions are wired, strategy guidance still being refined
-- Best run: 13.4B clips, Stage 2, ~$18M investments, Marketing Level 20, 230+ ticks
+- Best run: 13.5B clips, Stage 2, ~$27M investments, Marketing Level 20, 102+ ticks
 
 ## Known Issues
 
 ### ACTIVE — HIGH PRIORITY
-- **LLM domain output incomplete**: LLM outputs only 2-3 Action lines (Projects + Investments
-  + maybe Probes). User wants one Action line per visible game domain every tick.
-  Stage 2 domains: Business, Manufacturing, Computational Resources, Quantum Computing,
-  Projects, Investments, Strategic Modeling (7 total). Stage 3 adds Space/Probes (8 total).
-  Desired terminal output: `[ACT] nothing | nothing | nothing | nothing | nothing | nothing | nothing`
-  Also needs to display correctly on the http://localhost:5000 dashboard.
-  Fix requires: expanding SYSTEM_PROMPT format examples + increasing num_predict.
 
-- **Stage 2 project priority gap**: bridge.user.js `PROJECT_PRIORITY` list is missing all
-  Stage 2 manufacturing projects (Power Grid, Clip Factories, Harvester/Wire Drones, etc.).
-  These must be added in the correct order so auto-buy fires them when affordable.
+#### 1. LLM Domain Output — "LLM Failed" for 6/8 domains
+Root cause: SYSTEM_PROMPT only asks for 3 Action lines (Projects, Investments, Probes).
+The other 5 domains are listed as "automatically handled." The LLM is correct — it was
+never told to output those domains. relay.py dashboard has 8 static columns; any domain
+missing from domain_decisions shows "LLM Failed" in red.
+
+**Fix A (recommended first)**: Populate missing domains in agent.py with label "auto"
+(dim on dashboard) instead of leaving them absent (which causes "LLM Failed"):
+  - Build domain_decisions for ALL_STAGE2_DOMAINS = ["Business", "Manufacturing",
+    "Computational Resources", "Quantum Computing", "Projects", "Investments",
+    "Strategic Modeling"] and ALL_STAGE3_DOMAINS (adds "Probes")
+  - LLM-covered domains get their actual label; others get "auto"
+  - Also update relay.py dashboard: "auto" label should be dim/gray, not red
+  - Fast, zero risk — honest representation of fast-rule-managed domains
+
+**Fix B (future)**: Expand SYSTEM_PROMPT to 7 domain Action lines
+  - Remove the 5 domains from "handled automatically" section
+  - Add explicit Action lines for all 7 Stage 2 domains in format examples
+  - LLM outputs "nothing" for fast-rule domains unless it sees an edge case
+  - Requires: new examples, num_predict 400→700+; test qwen2.5 compliance first
+
+#### 2. Production Starvation — Wire=0, $26M locked in investments
+Wire hits 0 every 2-4 ticks while $26M sits in investments. Three interlocking failures:
+
+**Failure A — Withdraw trigger breaks at high marketing levels:**
+  Condition: `funds < marketing_cost AND bankroll > marketing_cost × 2`
+  Marketing Level 20 cost = $52.4M → requires bankroll > $104.8M to trigger.
+  Bankroll is $26.9M → withdraw NEVER fires. The condition is permanently broken
+  at high marketing levels because marketing cost grows faster than the bankroll.
+
+**Failure B — Emergency check skips when WireBuyer is on:**
+  `is_emergency()` returns False when wireBuyerOn=True, even if WireBuyer can't
+  afford a spool. Being "on" ≠ being able to buy. The check is logically wrong.
+
+**Failure C — LLM defers to the broken override:**
+  SYSTEM_PROMPT says invest_withdraw is "override-managed." LLM correctly outputs
+  "wait" every tick, trusting the override that never actually fires.
+
+**Fix A (add before marketing-cost withdraw check in agent.py):**
+  ```python
+  wire_val   = safe_float(state.get('wire'), 999)
+  wire_price = safe_float(state.get('wirePrice'), 9999)
+  wire_buyer = state.get('wireBuyerOn', False)
+  if wire_buyer and wire_val < 100 and funds_now < wire_price * 2 and invest_bankroll > wire_price * 5:
+      ov.append({"action": "invest_withdraw", "thought": "OVERRIDE: wire starvation"})
+      withdraw_cooldown = 3
+  ```
+
+**Fix B (replace the broken marketing-cost trigger entirely):**
+  Keep at least 5 wire spools worth of cash available at all times:
+  ```python
+  min_cash = max(safe_float(state.get('wirePrice'), 1000) * 5, 500.0)
+  if invest_bankroll > min_cash and funds_now < min_cash:
+      ov.append({"action": "invest_withdraw", ...})
+  ```
+  More general — fixes both wire starvation AND the marketing-level explosion issue.
+  Implement both: Fix A catches the critical case immediately, Fix B permanently
+  replaces the broken marketing-cost logic.
+
+#### 3. Stage 2 project priority gap
+bridge.user.js `PROJECT_PRIORITY` missing all Stage 2 manufacturing projects.
+See game_mechanics.md for the correct ordered list.
 
 ### ACTIVE — LOW PRIORITY
 - **Xavier Re-initialization appears twice** in project list (game quirk or selector issue).
