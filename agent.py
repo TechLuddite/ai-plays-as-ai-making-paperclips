@@ -547,7 +547,10 @@ def run():
             funds_now       = safe_float(state.get('funds'), 0)
             marketing_cost  = safe_float(state.get('marketingCost'), 0)
             target_strat    = 'hi' if invest_level >= 5 else 'med'
-            min_cash        = max(marketing_cost * 3.0, 500.0) if marketing_cost > 0 else 500.0
+            # Keep at least 5 wire spools worth of cash on hand at all times.
+            # Using wire price (not marketing cost) — marketing cost explodes at high levels
+            # and made the old threshold (~$52M at Level 20) permanently impossible to meet.
+            min_cash = max(safe_float(state.get('wirePrice'), 1000) * 5, 500.0)
 
             if invest_strategy and invest_strategy != target_strat:
                 # Strategy drift — correct every tick it's wrong
@@ -557,10 +560,23 @@ def run():
                 ov.append({"action": f'set_invest_{target_strat}', "args": {},
                            "thought": f"OVERRIDE: {inv_reason}"})
 
-            elif (marketing_cost > 0 and funds_now < marketing_cost
-                    and invest_bankroll > marketing_cost * 2):
-                # Cash too low for marketing — withdraw to free funds
-                wd_reason = (f"cash ${funds_now:.0f} < marketing ${marketing_cost:.0f} "
+            # Wire starvation emergency: WireBuyer is ON but can't afford a spool.
+            # Being "on" ≠ being able to buy — the old check (is_emergency) was wrong here.
+            # Bare 'if' (not elif) so it fires even when strategy was just corrected above.
+            wire_val   = safe_float(state.get('wire'), 999)
+            wire_price = safe_float(state.get('wirePrice'), 9999)
+            wire_buyer = state.get('wireBuyerOn', False)
+            if (wire_buyer and wire_val < 100
+                    and funds_now < wire_price * 2
+                    and invest_bankroll > wire_price * 5):
+                ov.append({"action": "invest_withdraw", "args": {},
+                           "thought": f"OVERRIDE: wire starvation (val={wire_val:.0f}, price=${wire_price:.0f})"})
+                withdraw_cooldown = 3
+                print(f"[!!!] WITHDRAW: wire starvation emergency (wire={wire_val:.0f}, price=${wire_price:.0f})")
+
+            elif funds_now < min_cash and invest_bankroll > min_cash:
+                # Cash below wire-price buffer — withdraw to cover production costs
+                wd_reason = (f"cash ${funds_now:.0f} < min_cash ${min_cash:.0f} "
                              f"— withdrawing bankroll ${invest_bankroll:.0f}")
                 print(f"[!!!] WITHDRAW: {wd_reason}")
                 ov.append({"action": "invest_withdraw", "args": {},
@@ -728,7 +744,8 @@ def run():
         print()
 
         # Build per-domain decision list for the dashboard.
-        # Domain order matches the Action: line order in SYSTEM_PROMPT.
+        # LLM-owned domains get their actual action; JS-handled domains get "auto"
+        # so the dashboard shows them as dim gray instead of red "LLM Failed".
         active_domains = ["Projects"]
         if state.get('portValue', ''):
             active_domains.append("Investments")
@@ -739,6 +756,26 @@ def run():
              "action": label}
             for i, label in enumerate(llm_display)
         ]
+
+        # Append "auto" entries for every JS-handled domain not already in the list.
+        # Only include domains that are active in the current game phase.
+        _ALL_DOMAINS = [
+            "Business", "Manufacturing", "Computational Resources", "Quantum Computing",
+            "Projects", "Investments", "Strategic Modeling", "Probes"
+        ]
+        _is_stage2 = bool(state.get('portValue', ''))
+        _is_stage3 = bool(state.get('colonized'))
+        _llm_domains = {d["domain"] for d in domain_decisions}
+        for _dom in _ALL_DOMAINS:
+            if _dom in _llm_domains:
+                continue
+            # Domains not yet unlocked get "n/a" (very dim) rather than "auto"
+            if _dom in ("Quantum Computing", "Strategic Modeling", "Investments") and not _is_stage2:
+                domain_decisions.append({"domain": _dom, "action": "n/a"})
+            elif _dom == "Probes" and not _is_stage3:
+                domain_decisions.append({"domain": _dom, "action": "n/a"})
+            else:
+                domain_decisions.append({"domain": _dom, "action": "auto"})
 
         # Update per-domain loop tracker and build warnings for the NEXT tick's prompt.
         # We track the last 5 actions per domain and warn when the last 3 are identical.

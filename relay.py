@@ -302,6 +302,10 @@ async function refresh() {
             const dec = (entry.domain_decisions || []).find(d => d.domain === key);
             if (!dec) {
               rows += `<td style="text-align:center;color:#f85149;font-size:11px;padding:3px 5px">LLM Failed</td>`;
+            } else if (dec.action === 'n/a') {
+              rows += `<td style="text-align:center;color:#30363d;font-size:11px;padding:3px 5px">n/a</td>`;
+            } else if (dec.action === 'auto') {
+              rows += `<td style="text-align:center;color:#484f58;font-size:11px;padding:3px 5px">auto</td>`;
             } else {
               const isAct = dec.action !== 'nothing' && dec.action !== 'wait';
               const col   = isAct ? '#3fb950' : '#8b949e';

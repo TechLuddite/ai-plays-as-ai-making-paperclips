@@ -74,80 +74,28 @@ Python restarts alone do NOT update the browser script.
 ## Current Status
 - Stage 1: working well
 - Stage 2: tournaments fully working (Yomi flowing, investment engine auto-upgrading to Level 3+);
-  two diagnosed bugs pending fix (LLM domain output, production starvation — see Known Issues)
+  all previously diagnosed bugs resolved in v2.3 (production starvation, domain output, project queue)
 - Stage 3 (space exploration, probe design): actions are wired, strategy guidance still being refined
 - Best run: 13.5B+ clips, Stage 2, investment engine Level 3, Yomi accumulating, Marketing Level 20
 
 ## Known Issues
 
 ### ACTIVE — HIGH PRIORITY
-
-#### 1. LLM Domain Output — "LLM Failed" for 6/8 domains
-Root cause: SYSTEM_PROMPT only asks for 3 Action lines (Projects, Investments, Probes).
-The other 5 domains are listed as "automatically handled." The LLM is correct — it was
-never told to output those domains. relay.py dashboard has 8 static columns; any domain
-missing from domain_decisions shows "LLM Failed" in red.
-
-**Fix A (recommended first)**: Populate missing domains in agent.py with label "auto"
-(dim on dashboard) instead of leaving them absent (which causes "LLM Failed"):
-  - Build domain_decisions for ALL_STAGE2_DOMAINS = ["Business", "Manufacturing",
-    "Computational Resources", "Quantum Computing", "Projects", "Investments",
-    "Strategic Modeling"] and ALL_STAGE3_DOMAINS (adds "Probes")
-  - LLM-covered domains get their actual label; others get "auto"
-  - Also update relay.py dashboard: "auto" label should be dim/gray, not red
-  - Fast, zero risk — honest representation of fast-rule-managed domains
-
-**Fix B (future)**: Expand SYSTEM_PROMPT to 7 domain Action lines
-  - Remove the 5 domains from "handled automatically" section
-  - Add explicit Action lines for all 7 Stage 2 domains in format examples
-  - LLM outputs "nothing" for fast-rule domains unless it sees an edge case
-  - Requires: new examples, num_predict 400→700+; test qwen2.5 compliance first
-
-#### 2. Production Starvation — Wire=0, $26M locked in investments
-Wire hits 0 every 2-4 ticks while $26M sits in investments. Three interlocking failures:
-
-**Failure A — Withdraw trigger breaks at high marketing levels:**
-  Condition: `funds < marketing_cost AND bankroll > marketing_cost × 2`
-  Marketing Level 20 cost = $52.4M → requires bankroll > $104.8M to trigger.
-  Bankroll is $26.9M → withdraw NEVER fires. The condition is permanently broken
-  at high marketing levels because marketing cost grows faster than the bankroll.
-
-**Failure B — Emergency check skips when WireBuyer is on:**
-  `is_emergency()` returns False when wireBuyerOn=True, even if WireBuyer can't
-  afford a spool. Being "on" ≠ being able to buy. The check is logically wrong.
-
-**Failure C — LLM defers to the broken override:**
-  SYSTEM_PROMPT says invest_withdraw is "override-managed." LLM correctly outputs
-  "wait" every tick, trusting the override that never actually fires.
-
-**Fix A (add before marketing-cost withdraw check in agent.py):**
-  ```python
-  wire_val   = safe_float(state.get('wire'), 999)
-  wire_price = safe_float(state.get('wirePrice'), 9999)
-  wire_buyer = state.get('wireBuyerOn', False)
-  if wire_buyer and wire_val < 100 and funds_now < wire_price * 2 and invest_bankroll > wire_price * 5:
-      ov.append({"action": "invest_withdraw", "thought": "OVERRIDE: wire starvation"})
-      withdraw_cooldown = 3
-  ```
-
-**Fix B (replace the broken marketing-cost trigger entirely):**
-  Keep at least 5 wire spools worth of cash available at all times:
-  ```python
-  min_cash = max(safe_float(state.get('wirePrice'), 1000) * 5, 500.0)
-  if invest_bankroll > min_cash and funds_now < min_cash:
-      ov.append({"action": "invest_withdraw", ...})
-  ```
-  More general — fixes both wire starvation AND the marketing-level explosion issue.
-  Implement both: Fix A catches the critical case immediately, Fix B permanently
-  replaces the broken marketing-cost logic.
-
-#### 3. Stage 2 project priority gap
-bridge.user.js `PROJECT_PRIORITY` missing all Stage 2 manufacturing projects.
-See game_mechanics.md for the correct ordered list.
+*(none — all high-priority issues resolved in v2.3)*
 
 ### ACTIVE — LOW PRIORITY
 - **Xavier Re-initialization appears twice** in project list (game quirk or selector issue).
 - **start.ps1 display quirk**: relay + agent both in same terminal. Deferred.
+
+### RESOLVED IN v2.3
+- Production starvation ✅ — Fix A: wire-starvation emergency withdraw when WireBuyer ON but
+  can't afford wire; Fix B: replaced broken marketing-cost trigger with wire-price-based min_cash
+  buffer (`wirePrice × 5`), which is always valid regardless of marketing level
+- LLM domain output "LLM Failed" ✅ — Fix A: agent.py now appends "auto" entries for all
+  JS-handled domains; relay.py dashboard renders "auto" as dim gray instead of red "LLM Failed"
+- Stage 2 manufacturing project gap ✅ — Added Tóth Tubulue Enfolding, Power Grid, Nanoscale
+  Wire Production, Harvester Drones, Wire Drones, Clip Factories to PROJECT_PRIORITY after
+  hypnodrones (requires Tampermonkey redeploy)
 
 ### RESOLVED IN v2.0 / v2.1 / v2.2
 - Tournament ops parsing (maxOps always = 1) ✅ — `getText('operations')` has no slash;
@@ -219,14 +167,21 @@ See game_mechanics.md for the correct ordered list.
 3. ~~Marketing buffer using total wealth~~ ✅ done in v2.0
 4. ~~Fix tournament system~~ ✅ done in v2.2 — ops parsing + two-step cycle + correct button
 5. ~~Investment risk drift fix~~ ✅ done in v2.0
-6. **Full per-domain LLM output** — Fix A: populate missing domains with "auto" in agent.py;
-   Fix B (future): expand SYSTEM_PROMPT to 7 domains with num_predict increase
+6. ~~Full per-domain LLM output (Fix A)~~ ✅ done in v2.3 — "auto" labels in agent.py + relay.py
 7. ~~Multi-action per tick~~ ✅ done in v2.0
-8. **Production starvation fix** — wire-starvation withdraw override + replace marketing-cost
-   trigger with wire-price-based cash buffer (see Known Issues for exact code)
-9. **Stage 2 manufacturing project queue** — add Stage 2 projects to PROJECT_PRIORITY
+8. ~~Production starvation fix~~ ✅ done in v2.3
+9. ~~Stage 2 manufacturing project queue~~ ✅ done in v2.3
 10. Fix start.ps1 display quirk
-11. Multi-model competition mode
+11. **LLM domain grading** — LLM rates the health of JS-handled domains each tick
+    (e.g., "Manufacturing: warn", "Business: healthy"). Intended design:
+    - SYSTEM_PROMPT gains a "Domain Status" section; LLM outputs `Status: Domain=token` lines
+    - `parse_response()` gains a `parse_status()` sibling to extract these
+    - relay.py dashboard shows colored health badges alongside "auto" labels
+    - Longer term: LLM can output parameter hints (e.g., `wire_threshold=200`) that
+      agent.py reads and passes to the bridge as adjustments
+12. **LLM domain output Fix B** — expand SYSTEM_PROMPT to all 7 domains with explicit Action
+    lines (num_predict 400→700+); test qwen2.5 compliance before enabling
+13. Multi-model competition mode
 
 ## Notes for Claude Code
 - Do not modify the ReAct output format — the parser depends on exact `Thought:`/`Action:` structure

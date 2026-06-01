@@ -230,22 +230,6 @@ Browser-side constants are at the top of `bridge.user.js`:
 
 ## Limitations & Known Issues
 
-**Active — high priority:**
-- **LLM domain output incomplete** — The LLM currently outputs only 2–3 `Action:` lines
-  (Projects, Investments, sometimes Probes). The goal is one `Action:` line per visible game
-  domain per tick: Business, Manufacturing, Computational Resources, Quantum Computing,
-  Projects, Investments, and Strategic Modeling (7 in Stage 2; 8 with Probes in Stage 3).
-  The dashboard shows "LLM Failed" in red for any domain the LLM doesn't cover — this is an
-  instructions gap, not an LLM failure. Fix A: populate missing domains with "auto" in
-  agent.py. Fix B (future): expand SYSTEM_PROMPT to ask the LLM about all 7 domains.
-- **Production starvation at high marketing levels** — the investment withdraw override
-  uses `bankroll > 2× marketing_cost` to decide when to release funds. At Marketing Level 20,
-  marketing costs $52M, so the trigger requires $104M in the bankroll — it can never fire.
-  Wire goes to zero while $26M sits locked in investments. Fix: replace the marketing-cost
-  trigger with a wire-price-based cash buffer check.
-- **Stage 2 project queue gap** — The fast-rule project priority list is missing all
-  Stage 2 manufacturing projects (Power Grid, Clip Factories, Harvester/Wire Drones, etc.).
-
 **Active — low priority:**
 - **Xavier Re-initialization appears twice** in the project list (game quirk, selector issue).
 - **`start.ps1` display quirk** — relay and agent share a terminal window. Use the manual
@@ -257,19 +241,23 @@ Browser-side constants are at the top of `bridge.user.js`:
 - The LLM occasionally produces invalid actions; these are caught and substituted with `wait`.
 - If Ollama is slow to respond, the agent falls back to `wait` for that tick.
 
-**Resolved in v2.0 – v2.2:**
-- Tournament system fully working ✅ — three-part fix: correct button (`btnNewTournament`),
-  ops parsing (maxOps was always 1 due to bad split), and two-step cycle (New Tournament
-  must be followed by Run ~1.5s later to award Yomi). Confirmed: Yomi flowing, investment
-  engine auto-upgraded to Level 3.
-- AutoTourney never started — Yomi was 0 after overnight runs despite AutoTourney being wired ✅
-- Quantum Computing not automated — Compute button was never clicked ✅
+**Resolved in v2.0 – v2.3:**
+- Production starvation at high marketing levels ✅ — wire-price-based cash buffer replaces
+  the broken marketing-cost trigger; wire-starvation emergency override added for WireBuyer
+- Dashboard "LLM Failed" for JS-handled domains ✅ — `domain_decisions` now covers all 8
+  domains every tick: LLM-owned get their action, JS-handled show "auto" (dim gray), locked
+  domains show "n/a" (near-invisible); red "LLM Failed" reserved for real failures only
+- Stage 2 project queue gap ✅ — all six manufacturing projects added to PROJECT_PRIORITY
+- Tournament system fully working ✅ — correct button, ops parsing, two-step cycle; Yomi
+  flowing, investment engine auto-upgrading
+- AutoTourney never started — Yomi was 0 after overnight runs ✅
+- Quantum Computing not automated ✅
 - Marketing severely underinvested — demand ReferenceError + wrong firing condition ✅
 - Investment risk drifting back to Low Risk overnight ✅
-- LLM believing tournaments cost Yomi (they award Yomi; they cost ops) ✅
+- LLM believing tournaments cost Yomi ✅
 - Xavier Re-initialization bought repeatedly, draining creativity and resetting trust to 0 ✅
-- stratPicker not sticking — offsetParent check silently bailed; fixed with 50ms enforcement ✅
-- Stage 2 investActive detection — isVisible() unreliable; now uses portValue text ✅
+- stratPicker not sticking ✅
+- Stage 2 investActive detection ✅
 
 ---
 
@@ -332,7 +320,23 @@ It's a work in progress. But it works.
 
 ## Version History
 
-**v2.2 (current)**
+**v2.3 (current)**
+
+All previously active high-priority bugs resolved. Dashboard now accurately represents all 8 domains.
+
+Key changes:
+- **Production starvation fix** — two interlocking fixes to the investment withdraw logic:
+  (1) wire-starvation emergency that triggers when WireBuyer is ON but can't afford wire;
+  (2) general wire-price-based cash buffer (`wirePrice × 5`) replaces the broken
+  marketing-cost trigger that permanently failed at Marketing Level 20.
+- **Dashboard domain coverage** — all 8 domain columns now always have an entry: LLM-owned
+  domains show their action, JS-handled domains show "auto" (dim gray), and domains not yet
+  unlocked show "n/a" (near-invisible). Red "LLM Failed" is now reserved for real failures.
+- **Stage 2 manufacturing project queue** — added all six Stage 2 projects to `PROJECT_PRIORITY`
+  in the correct ops-cost order (Tóth Tubulue Enfolding → Power Grid → Nanoscale Wire
+  Production → Harvester Drones → Wire Drones → Clip Factories).
+
+**v2.2**
 
 Tournament system fully resolved after a three-part bug hunt across two sessions.
 
@@ -390,20 +394,21 @@ Key changes:
 
 ## Where do we go from here?
 
-v2.2 resolved the tournament system completely. With Yomi now flowing and the investment engine upgrading autonomously, the next session has two clear targets:
+v2.3 resolved all active high-priority issues. With production starvation fixed, domain
+coverage honest on the dashboard, and the Stage 2 project queue complete, the project is in
+a stable state for extended Stage 2 runs.
 
-**Priority for next session:**
-- **Fix "LLM Failed" for 6/8 domains** — the LLM follows its instructions and only outputs
-  2–3 Action lines. Quick fix: populate the remaining domains with `"auto"` in agent.py and
-  style them dim on the dashboard. Deeper fix (future): expand SYSTEM_PROMPT so the LLM
-  reasons about all 7 Stage 2 domains and can flag edge cases it spots.
-- **Fix production starvation** — the investment withdraw trigger breaks at high marketing
-  levels (requires bankroll > 2× marketing cost, which can never be met at Level 20).
-  Replace with a wire-price-based cash buffer: keep at least 5 wire spools worth of cash
-  available at all times, withdrawing from investments to maintain it.
+**Next architectural direction:**
+- **LLM domain grading** — rather than just labeling JS-handled domains as "auto", the LLM
+  could rate their health each tick (e.g. "Manufacturing: warn", "Business: healthy"). This
+  keeps the JS fast-path intact while giving the LLM visibility and eventually the ability to
+  suggest parameter adjustments when it spots starvation or inefficiency.
 
 **Backlog:**
-- **Stage 2 project queue** — add manufacturing projects (Power Grid, Clip Factories, Harvester/Wire Drones, etc.) to the fast-rule auto-buy list.
-- **Stage 3 probe strategy refinement** — mechanics are wired; strategic guidance for balancing rep/haz/fac/harv/wire/combat is still thin.
+- **Expand LLM to all 7 domains** — grow SYSTEM_PROMPT so the LLM outputs an `Action:` line
+  for every Stage 2 domain, not just Projects/Investments/Probes. Requires `num_predict`
+  increase (400→700+) and testing qwen2.5 compliance.
+- **Stage 3 probe strategy refinement** — mechanics are wired; strategic guidance for
+  balancing rep/haz/fac/harv/wire/combat is still thin.
 - **Multi-model competition** — run two different local models simultaneously and compare.
 - **start.ps1 display fix** — minor; relay and agent sharing a terminal is slightly annoying.

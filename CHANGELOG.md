@@ -4,6 +4,42 @@ All notable changes to this project are documented here.
 
 ---
 
+## [2.3] - 2026-06-01
+
+### Fixed
+- **Production starvation — wire-starvation emergency** (`agent.py`) — added a bare `if`
+  block (not `elif`) that fires when WireBuyer is ON but wire < 100 and funds can't cover
+  two spools while investments hold > 5× the spool price. Previous logic checked
+  `is_emergency()` which returned False when WireBuyer was ON, even if it couldn't afford
+  wire. "On" ≠ able to buy.
+- **Production starvation — marketing-cost trigger** (`agent.py`) — the old withdraw
+  condition (`funds < marketing_cost AND bankroll > 2× marketing_cost`) permanently failed
+  at Marketing Level 20 because the cost (~$52M) required $104M in the bankroll to trigger.
+  Replaced with a general wire-price-based cash buffer: `min_cash = wirePrice × 5`. Keeps
+  at least 5 spool-equivalents of cash available at all times; withdraws from investments
+  when cash falls below that threshold. Scales naturally as wire prices change and is
+  independent of marketing level.
+- **Dashboard "LLM Failed" for JS-handled domains** (`agent.py`, `relay.py`) — dashboard
+  showed "LLM Failed" in red for all 5 JS-handled domains (Business, Manufacturing, Comp
+  Resources, Quantum Computing, Strategic Modeling) because `domain_decisions` only included
+  LLM-owned domains. `agent.py` now appends every domain to `domain_decisions` every tick:
+  - LLM-owned domains get their actual action label
+  - Active JS-handled domains get `"auto"` (dim gray on dashboard)
+  - Domains not yet unlocked for the current game phase get `"n/a"` (near-invisible dark gray)
+  `relay.py` dashboard updated with matching color tiers: red "LLM Failed" is now reserved
+  for genuine LLM failures on domains it owns.
+- **Stage 2 manufacturing project priority gap** (`bridge.user.js`) — `PROJECT_PRIORITY`
+  was missing all six Stage 2 manufacturing projects. Added in correct ops-cost order after
+  `hypnodrones`: Tóth Tubulue Enfolding (45k) → Power Grid (40k) → Nanoscale Wire
+  Production (35k) → Harvester Drones (25k) → Wire Drones (25k) → Clip Factories (35k).
+  **Requires Tampermonkey redeploy** (copy bridge.user.js → editor → save → reload page).
+
+### Still active
+- **Xavier Re-initialization appears twice** in the project list (game quirk).
+- **start.ps1 display quirk** — relay and agent share a terminal window.
+
+---
+
 ## [2.2] - 2026-05-30
 
 ### Fixed
