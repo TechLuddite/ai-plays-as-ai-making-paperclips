@@ -301,7 +301,11 @@ Python restarts alone do NOT update the browser script.
 - When adding new actions, update: ACTIONS string, validate_action() set, bridge.user.js executeAction()
 - Owner is non-coder — prefer clear, well-commented code over clever one-liners
 - `agent.log` is gitignored; it's a JSON-lines file written by agent.py each tick
-- The dashboard at `http://localhost:5000` is the preferred way to observe a run — no terminal needed
+- The dashboard at `http://localhost:5000` is the preferred way to observe a run — no terminal needed.
+  v2.8: the LLM Decisions card is grouped into 3 stage sections (Stage 1/2/3). Domains come from
+  `DOMAIN_REGISTRY` in agent.py (name, stage) — add new domains there + to the `STAGES` map in
+  relay.py's dashboard JS. New Stage 2 domains (Power/Wire Production/Swarm Computing) get a
+  computed grade via `compute_stage2_grade()`; the original 5 use the LLM `Status:` grade.
 - Hard overrides pattern (v2.0): collect into ov[] → LLM always runs → post_action_queue(ov + llm_q)
   Only wire emergency uses the old continue pattern (hard exit before LLM)
 - Safe float parsing: safe_float(state.get('key'), fallback) handles $, %, commas, empty strings

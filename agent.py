@@ -554,6 +554,66 @@ def parse_status(text):
         break  # only the first Status line is meaningful
     return status
 
+# ── Domain registry (for the stage-grouped dashboard) ─────────────────────────
+# Every game domain the dashboard tracks, tagged with the STAGE it belongs to so the
+# dashboard can group them into Stage 1 / 2 / 3 sections. (name, stage).
+# - LLM-owned domains (Projects, Investments, Probes) show the LLM's actual action.
+# - LLM-graded auto domains use the LLM's Status grade.
+# - New Stage 2 JS domains (Power, Wire Production, Swarm Computing) use a computed grade.
+DOMAIN_REGISTRY = [
+    ("Business",                1),
+    ("Manufacturing",           1),
+    ("Computational Resources", 1),
+    ("Quantum Computing",       1),
+    ("Projects",                1),
+    ("Power",                   2),
+    ("Wire Production",         2),
+    ("Swarm Computing",         2),
+    ("Strategic Modeling",      2),
+    ("Investments",             2),
+    ("Probes",                  3),
+]
+LLM_OWNED_DOMAINS = {"Projects", "Investments", "Probes"}
+# These five are graded by the LLM's advisory Status line (v2.4).
+LLM_GRADED_DOMAINS = {"Business", "Manufacturing", "Computational Resources",
+                      "Quantum Computing", "Strategic Modeling"}
+
+def compute_stage2_grade(domain, state):
+    """Deterministic health grade for the new Stage 2 JS-managed domains, derived from
+    game state (no LLM needed). Returns 'healthy'/'warn'/'critical' or None (no dot)."""
+    if domain == "Power":
+        perf = safe_float(state.get('performance'), -1)
+        cons = safe_float(state.get('powerConsumption'), 0)
+        if perf < 0 or cons <= 0:
+            return None                      # no consumers yet — nothing to grade
+        if perf < 50:   return 'critical'    # severely underpowered
+        if perf < 100:  return 'warn'        # power deficit
+        return 'healthy'                     # at/over 100% (Momentum can push far higher)
+    if domain == "Wire Production":
+        harv  = safe_float(state.get('harvesterLevel'), -1)
+        wired = safe_float(state.get('wireDroneLevel'), -1)
+        if harv < 0 and wired < 0:
+            return None                      # not unlocked
+        return 'healthy' if (harv >= 1 and wired >= 1) else 'warn'
+    # Swarm Computing: not graded yet (bridge doesn't send swarmGifts) — show plain "auto".
+    return None
+
+def domain_is_active(domain, state):
+    """Whether a domain is live in the current game state (else the dashboard shows n/a)."""
+    if domain in ("Business", "Manufacturing", "Computational Resources", "Projects"):
+        return True
+    if domain == "Quantum Computing":
+        return bool(state.get('portValue', ''))          # proxy: unlocked around Stage 2
+    if domain == "Strategic Modeling":
+        return state.get('autoTourneyOn') is not None
+    if domain == "Investments":
+        return bool(state.get('portValue', ''))
+    if domain in ("Power", "Wire Production", "Swarm Computing"):
+        return state.get('performance') is not None      # bridge sends these only in Stage 2
+    if domain == "Probes":
+        return bool(state.get('colonized'))
+    return True
+
 def parse_action(action_str):
     if ":" in action_str:
         parts = action_str.split(":", 1)
@@ -912,51 +972,46 @@ def run():
         print(f"[ACT] {llm_str}  ({elapsed_ms}ms)")
         print()
 
-        # Build per-domain decision list for the dashboard.
-        # LLM-owned domains get their actual action; JS-handled domains get "auto"
-        # so the dashboard shows them as dim gray instead of red "LLM Failed".
-        active_domains = ["Projects"]
+        # Build per-domain decision list for the dashboard, tagged with each domain's STAGE
+        # so the dashboard can group them into Stage 1/2/3 sections.
+        #   - LLM-owned domains (Projects/Investments/Probes) → the LLM's actual action
+        #   - LLM-graded auto domains (the original 5)         → "auto" + LLM Status grade
+        #   - new Stage 2 JS domains (Power/Wire/Swarm)        → "auto" + computed grade
+        #   - domains not yet unlocked                          → "n/a"
+        #
+        # Map each LLM-owned domain to its action. The LLM emits one Action line per active
+        # LLM-owned domain in this order: Projects, then Investments (Stage 2), then Probes.
+        llm_owned_order = ["Projects"]
         if state.get('portValue', ''):
-            active_domains.append("Investments")
+            llm_owned_order.append("Investments")
         if state.get('colonized'):
-            active_domains.append("Probes")
-        # LLM-owned domains carry their actual action and status=None (they are graded
-        # by their action, not by a health token).
-        domain_decisions = [
-            {"domain": active_domains[i] if i < len(active_domains) else f"Domain {i+1}",
-             "action": label,
-             "status": None}
-            for i, label in enumerate(llm_display)
-        ]
+            llm_owned_order.append("Probes")
+        llm_action_by_domain = {}
+        for i, label in enumerate(llm_display):
+            if i < len(llm_owned_order):
+                llm_action_by_domain[llm_owned_order[i]] = label
 
-        # Append "auto" entries for every JS-handled domain not already in the list.
-        # Only include domains that are active in the current game phase.
-        _ALL_DOMAINS = [
-            "Business", "Manufacturing", "Computational Resources", "Quantum Computing",
-            "Projects", "Investments", "Strategic Modeling", "Probes"
-        ]
-        _is_stage2 = bool(state.get('portValue', ''))
-        _is_stage3 = bool(state.get('colonized'))
-        _llm_domains = {d["domain"] for d in domain_decisions}
-        for _dom in _ALL_DOMAINS:
-            if _dom in _llm_domains:
-                continue
-            # Domains not yet unlocked get "n/a" (very dim) rather than "auto".
-            # Auto domains carry the LLM's advisory health grade (or None if it
-            # didn't grade them this tick) so the dashboard can show a status dot.
-            if _dom in ("Quantum Computing", "Strategic Modeling", "Investments") and not _is_stage2:
-                domain_decisions.append({"domain": _dom, "action": "n/a", "status": None})
-            elif _dom == "Probes" and not _is_stage3:
-                domain_decisions.append({"domain": _dom, "action": "n/a", "status": None})
+        domain_decisions = []
+        for dom, stage in DOMAIN_REGISTRY:
+            if not domain_is_active(dom, state):
+                entry = {"action": "n/a", "status": None}
+            elif dom in LLM_OWNED_DOMAINS:
+                entry = {"action": llm_action_by_domain.get(dom, "—"), "status": None}
+            elif dom in LLM_GRADED_DOMAINS:
+                entry = {"action": "auto", "status": status_map.get(dom)}
             else:
-                domain_decisions.append({"domain": _dom, "action": "auto",
-                                         "status": status_map.get(_dom)})
+                entry = {"action": "auto", "status": compute_stage2_grade(dom, state)}
+            domain_decisions.append({"domain": dom, "stage": stage, **entry})
 
         # Update per-domain loop tracker and build warnings for the NEXT tick's prompt.
         # We track the last 5 actions per domain and warn when the last 3 are identical.
         for dd in domain_decisions:
             d = dd['domain']
             a = dd['action']
+            # Only loop-check real LLM decisions — auto/n/a/placeholder are JS-handled or
+            # inactive, so tracking them just spams the prompt with "Business: auto ×N".
+            if a in ('auto', 'n/a', '—'):
+                continue
             if d not in domain_loop_tracker:
                 domain_loop_tracker[d] = []
             domain_loop_tracker[d].append(a)

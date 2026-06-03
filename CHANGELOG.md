@@ -4,6 +4,29 @@ All notable changes to this project are documented here.
 
 ---
 
+## [2.8] - 2026-06-03
+
+### Changed
+- **Dashboard overhaul — stage-grouped domains** (`agent.py`, `relay.py`) — the LLM Decisions
+  card showed a static 8-column table that omitted the new Stage 2 domains entirely (Power,
+  Wire Production, Swarm Computing weren't represented). Rebuilt it into **three stage sections**
+  (Stage 1 — Core / Stage 2 — Industry / Stage 3 — Space), each a mini-table of its domains with
+  the last 3 ticks and a health badge.
+  - `agent.py` now builds `domain_decisions` from a stage-tagged `DOMAIN_REGISTRY` (11 domains)
+    instead of a flat list of 8. Each entry carries a `stage` (1/2/3).
+  - New Stage 2 domains get a **computed health grade** from game state (no LLM needed):
+    Power (from Factory/Drone Performance — healthy ≥100% / warn / critical <50%), Wire
+    Production (from harvester+wire drone presence). Swarm Computing shows plain "auto" until
+    the Swarm Gifts feature lands. The original 5 auto domains keep their LLM Status grade.
+  - `relay.py` dashboard renders the three sections via a stage map + a shared cell renderer
+    (action / auto+dot / n/a / LLM Failed).
+- **Loop-tracker noise reduced** (`agent.py`) — the per-domain repeat detector now skips
+  `auto`/`n/a` entries, so it no longer spams the prompt with "Business: auto ×N" warnings for
+  JS-handled domains (only real LLM decisions are loop-checked).
+  Agent + relay change only — **no Tampermonkey redeploy** (restart relay + agent).
+
+---
+
 ## [2.7.2] - 2026-06-03
 
 ### Fixed

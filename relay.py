@@ -276,63 +276,65 @@ async function refresh() {
       : '';
     document.getElementById('metrics').innerHTML = cards + resultCard;
 
-    // LLM Decisions — static 8-domain table, last 3 ticks
-    const DEC_LABELS = ['Business','Manufacturing','Comp Resources','Quantum Computing',
-                        'Projects','Investments','Strat Modeling','Probes'];
-    const DEC_KEYS   = ['Business','Manufacturing','Computational Resources','Quantum Computing',
-                        'Projects','Investments','Strategic Modeling','Probes'];
+    // LLM Decisions — grouped into 3 stage sections (Stage 1/2/3), last 3 ticks each.
+    // Domains carry a `stage` from the agent; we group them here so new Stage 2 domains
+    // (Power, Wire Production, Swarm Computing) show up alongside the originals.
+    const STAGES = [
+      { label: 'Stage 1 — Core',
+        keys:   ['Business','Manufacturing','Computational Resources','Quantum Computing','Projects'],
+        labels: ['Business','Manufacturing','Comp Res','Quantum','Projects'] },
+      { label: 'Stage 2 — Industry',
+        keys:   ['Power','Wire Production','Swarm Computing','Strategic Modeling','Investments'],
+        labels: ['Power','Wire Prod','Swarm','Strat Model','Investments'] },
+      { label: 'Stage 3 — Space',
+        keys:   ['Probes'],
+        labels: ['Probes'] },
+    ];
     const decHist = (state._decisions_history || []).slice().reverse(); // newest first
     const AGE_LBL = ['latest', '−1', '−2'];
-    if (decHist.length) {
-      let hdr = '<tr><th style="text-align:left;min-width:54px"></th>';
-      DEC_LABELS.forEach(n => {
-        hdr += `<th style="text-align:center;padding:4px 6px">${n}</th>`;
-      });
-      hdr += '</tr>';
-      let rows = '';
-      for (let i = 0; i < 3; i++) {
-        const entry   = decHist[i];
-        const opacity = i === 0 ? '1' : i === 1 ? '0.6' : '0.35';
-        rows += `<tr style="opacity:${opacity}">`;
-        rows += `<td style="color:#8b949e;font-size:10px;padding:4px 6px;white-space:nowrap">${AGE_LBL[i]}</td>`;
-        DEC_KEYS.forEach(key => {
-          if (!entry) {
-            rows += `<td style="text-align:center;color:#30363d;padding:3px 5px">—</td>`;
-          } else {
-            const dec = (entry.domain_decisions || []).find(d => d.domain === key);
-            if (!dec) {
-              rows += `<td style="text-align:center;color:#f85149;font-size:11px;padding:3px 5px">LLM Failed</td>`;
-            } else if (dec.action === 'n/a') {
-              rows += `<td style="text-align:center;color:#30363d;font-size:11px;padding:3px 5px">n/a</td>`;
-            } else if (dec.action === 'auto') {
-              // "auto" = fast rules own this domain. The LLM's advisory health grade
-              // (dec.status) shows as a small colored dot: dim green=healthy,
-              // amber=warn, red=critical. A red dot differs from "LLM Failed" red
-              // text — the dot means the JS is running but the LLM flags a concern.
-              // No status → no dot, just the dim gray "auto" as before.
-              const DOT = {healthy:'#2ea043', warn:'#d29922', critical:'#f85149'};
-              const dc  = DOT[dec.status];
-              const dot = dc
-                ? `<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${dc};margin-right:5px;vertical-align:middle"></span>`
-                : '';
-              rows += `<td style="text-align:center;color:#484f58;font-size:11px;padding:3px 5px">${dot}auto</td>`;
-            } else {
-              const isAct = dec.action !== 'nothing' && dec.action !== 'wait';
-              const col   = isAct ? '#3fb950' : '#8b949e';
-              const wt    = isAct ? 'bold' : 'normal';
-              rows += `<td style="text-align:center;color:${col};font-weight:${wt};padding:3px 5px">${dec.action}</td>`;
-            }
-          }
-        });
-        rows += '</tr>';
+    const DOT = { healthy:'#2ea043', warn:'#d29922', critical:'#f85149' };
+
+    // Render one domain cell for a given tick entry.
+    function decCell(entry, key) {
+      if (!entry) return `<td style="text-align:center;color:#30363d;padding:3px 5px">—</td>`;
+      const dec = (entry.domain_decisions || []).find(d => d.domain === key);
+      if (!dec) return `<td style="text-align:center;color:#f85149;font-size:11px;padding:3px 5px">LLM Failed</td>`;
+      if (dec.action === 'n/a') return `<td style="text-align:center;color:#30363d;font-size:11px;padding:3px 5px">n/a</td>`;
+      if (dec.action === 'auto') {
+        // JS-handled domain. dec.status (LLM grade or computed) → colored health dot:
+        // dim green=healthy, amber=warn, red=critical. No status → just dim "auto".
+        const dc  = DOT[dec.status];
+        const dot = dc ? `<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${dc};margin-right:5px;vertical-align:middle"></span>` : '';
+        return `<td style="text-align:center;color:#484f58;font-size:11px;padding:3px 5px">${dot}auto</td>`;
       }
+      const isAct = dec.action !== 'nothing' && dec.action !== 'wait' && dec.action !== '—';
+      const col   = isAct ? '#3fb950' : '#8b949e';
+      const wt    = isAct ? 'bold' : 'normal';
+      return `<td style="text-align:center;color:${col};font-weight:${wt};padding:3px 5px">${dec.action}</td>`;
+    }
+
+    if (decHist.length) {
+      let html = '';
+      STAGES.forEach(stg => {
+        let hdr = `<tr><th style="text-align:left;min-width:60px;color:#58a6ff;padding:4px 6px">${stg.label}</th>`;
+        stg.labels.forEach(n => hdr += `<th style="text-align:center;padding:4px 6px">${n}</th>`);
+        hdr += '</tr>';
+        let rows = '';
+        for (let i = 0; i < 3; i++) {
+          const entry   = decHist[i];
+          const opacity = i === 0 ? '1' : i === 1 ? '0.6' : '0.35';
+          rows += `<tr style="opacity:${opacity}">`;
+          rows += `<td style="color:#8b949e;font-size:10px;padding:4px 6px;white-space:nowrap">${AGE_LBL[i]}</td>`;
+          stg.keys.forEach(key => rows += decCell(entry, key));
+          rows += '</tr>';
+        }
+        html += `<table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:14px">${hdr}${rows}</table>`;
+      });
       const latestOvr = (decHist[0] && decHist[0].overrides || '').trim();
       if (latestOvr) {
-        rows += `<tr><td style="color:#8b949e;font-size:10px;padding:4px 6px;white-space:nowrap">overrides</td>`;
-        rows += `<td colspan="${DEC_KEYS.length}" style="color:#f85149;padding:4px 6px">${latestOvr}</td></tr>`;
+        html += `<div style="font-size:11px;padding:4px 6px"><span style="color:#8b949e">overrides:</span> <span style="color:#f85149">${latestOvr}</span></div>`;
       }
-      document.getElementById('decisions-wrap').innerHTML =
-        `<table style="width:100%;border-collapse:collapse;font-size:12px">${hdr}${rows}</table>`;
+      document.getElementById('decisions-wrap').innerHTML = html;
     } else {
       document.getElementById('decisions-wrap').innerHTML = '<span class="dim">No decisions yet</span>';
     }

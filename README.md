@@ -345,7 +345,16 @@ It's a work in progress. But it works.
 
 ## Version History
 
-**v2.7 (current)**
+**v2.8 (current)**
+
+Dashboard overhaul — the decisions view is now grouped into three stage sections (Stage 1 — Core,
+Stage 2 — Industry, Stage 3 — Space), so the new Stage 2 domains (Power, Wire Production, Swarm
+Computing) finally appear alongside the originals. Each domain shows its last 3 ticks and a health
+badge: LLM grade for the original five, a computed grade (from game state) for Power and Wire
+Production. Also bundled the Stage 2 project auto-buy fixes (Momentum + other late-Stage-2
+upgrades, yomi-cost parsing) and the manufacturing engine below.
+
+**v2.7**
 
 Built the Stage 2 Power & Manufacturing engine — a whole game domain the agent couldn't see.
 
