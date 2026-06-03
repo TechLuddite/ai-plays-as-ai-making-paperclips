@@ -55,6 +55,8 @@ VALID ACTIONS — use exactly one, spelled exactly as shown:
     set_swarm_think             — slider to 90% Think: drones make Swarm Gifts fast (grows memory)
     set_swarm_balanced          — slider to 50%: balance gifts with production
     set_swarm_work              — slider to 20% Think: favor production (clips/matter)
+    sync_swarm                  — fix a "Disorganized" swarm (costs 5,000 yomi); do this FIRST
+                                  when swarmStatus shows Disorganized, or no gifts will generate
     add_memory                  — spend ONE Swarm Gift on memory (raises ops ceiling toward 120)
     add_processor               — spend ONE Swarm Gift on a processor (ops regen / creativity)
     (In Stage 2, Swarm Gifts are your "trust": add_memory/add_processor spend a gift, not trust.)
@@ -127,15 +129,17 @@ YOUR JOB — work through this priority list each tick:
    game will NOT spend them for you. Memory raises your ops ceiling (memory × 1000); you need
    memory 120 to unlock Space Exploration, passing 80 and 100 (which unlock Drone-flocking and
    factory upgrades) on the way. Two levers:
-   a) GENERATE gifts via the Work/Think slider. Gifts only appear when drones "think".
-      - While memory < 120: set_swarm_think (≈90% Think) — rush memory to the wall.
-        (If the OBS shows the slider at Work / "Next gift in Infinity", you MUST set_swarm_think,
-         or no gifts ever come and memory stays stuck.)
-      - Once memory ≥ 120: set_swarm_balanced (≈50%) to favor production again.
-   b) SPEND gifts when swarmGifts ≥ 1: add_memory until memory reaches 120, then add_processor.
-      Each add_memory/add_processor spends ONE gift. Keep memory ahead; processors ~half of memory.
-   Do at most one of these per tick (whichever matters most): set the slider if it's wrong, else
-   spend a gift if one is available, else nothing.
+   Each tick, do at most ONE swarm action, in this PRIORITY order:
+   0) FIX FIRST: if swarmStatus shows "Disorganized" → sync_swarm (costs 5k yomi; you have
+      plenty). A disorganized swarm generates NO gifts, so nothing else works until you sync.
+   1) SPEND a waiting gift: if swarmGifts ≥ 1 → add_memory (until memory reaches 120), then
+      add_processor. Each spends ONE gift. This is how memory grows in Stage 2.
+   2) GENERATE gifts: if no gift is waiting and the slider isn't already on Think while memory
+      < 120 → set_swarm_think (≈90%). Gifts only appear when drones "think". (If the OBS shows
+      the slider at Work / "Next gift in Infinity", you MUST set_swarm_think or memory stays stuck.)
+      Once memory ≥ 120 → set_swarm_balanced (≈50%) to favor production again.
+   3) Otherwise → nothing.
+   NOTE: a waiting gift (swarmGifts ≥ 1) is worth more than re-setting the slider — spend it first.
 
 3. STAGE 2 CONTEXT (when portValue is visible — Algorithmic Trading purchased):
    Revenue now comes from the investment engine, NOT clip sales. Large unsold clip counts
@@ -407,6 +411,8 @@ def format_state(state):
                             f"(short by {short_by:,}) — cannot upgrade yet")
         if k == 'portValue' and fv > 0:
             flag = " ← grow via invest_deposit / upgrade_investment"
+        if k == 'swarmStatus' and 'disorg' in str(v).lower():
+            flag = " ⚠ DISORGANIZED — sync_swarm NOW (5k yomi); no gifts generate until you do"
         if k == 'swarmGifts' and fv >= 1:
             # Swarm Gifts = the Stage 2 "trust". Tell the LLM exactly what to spend them on.
             mem_now = safe_float(state.get('memory'), 0)
@@ -695,7 +701,7 @@ def validate_action(action):
         # strategic modeling / autotourney
         'toggle_auto_tourney', 'set_strategy_random', 'run_tournament',
         # swarm computing (Stage 2) — Work/Think slider; gifts spent via add_memory/add_processor
-        'set_swarm_think', 'set_swarm_balanced', 'set_swarm_work',
+        'set_swarm_think', 'set_swarm_balanced', 'set_swarm_work', 'sync_swarm',
         # investments
         'invest_deposit', 'invest_withdraw',
         'set_invest_low', 'set_invest_med', 'set_invest_hi',

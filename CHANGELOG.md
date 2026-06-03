@@ -4,6 +4,29 @@ All notable changes to this project are documented here.
 
 ---
 
+## [2.9.1] - 2026-06-04
+
+### Fixed
+- **Drone ratio caused a "Disorganized" swarm** (`bridge.user.js`) — `DRONE_RATIO` was 1.618
+  (the wiki's PRODUCTION-optimal golden ratio), but that EXCEEDS the swarm's 1.5× imbalance
+  limit, so the builder drove the drones to 191/309 = 1.618 and the swarm tipped to
+  "Disorganized" — which halts Swarm Gift generation (a hidden reason memory was stuck).
+  Lowered `DRONE_RATIO` to 1.45 (safely under 1.5).
+- **No recovery from a Disorganized swarm** (`bridge.user.js`, `agent.py`) — added a
+  `sync_swarm` LLM action (clicks "Synchronize the Swarm", `btnSynchSwarm`, costs 5k yomi).
+  The Swarm Computing prompt now does sync FIRST (a disorganized swarm generates no gifts),
+  then spends a waiting gift, then sets the slider. `format_state()` flags the Disorganized
+  status loudly.
+
+### Note
+- Root cause of "nothing happened" after v2.9: the **bridge wasn't redeployed** — the live
+  state showed `swarmGifts`/`swarmThink`/`swarmStatus` absent and `set_swarm_think` returning
+  an empty note (v2.9 sets "90% Think"), confirming the browser still ran the old bridge.
+  v2.9's LLM features only work once `bridge.user.js` is copied into Tampermonkey.
+  **Requires Tampermonkey redeploy** (v2.9 + v2.9.1 together).
+
+---
+
 ## [2.9] - 2026-06-04
 
 LLM-first Stage 2: the model now drives Swarm Computing (the Stage 2 progression engine)

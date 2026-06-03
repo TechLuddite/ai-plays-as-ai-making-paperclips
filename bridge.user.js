@@ -32,7 +32,10 @@
                                    //   let production-funded deficit-provisioning scale it up)
     const BATTERY_MIN    = 20;     // battery towers (cheap hedge; built last, after consumers)
     const DRONE_TARGET   = 500;    // total drones to build (wiki: "leave drones at 500")
-    const DRONE_RATIO    = 1.618;  // wire drones ÷ harvester drones (golden ratio; >1.5 imbalance breaks the swarm)
+    const DRONE_RATIO    = 1.45;   // wire drones ÷ harvester drones. The wiki's "golden ratio"
+                                   // 1.618 is the PRODUCTION ideal but it EXCEEDS the swarm's
+                                   // 1.5× imbalance limit → "Disorganized" (halts gifts, costs
+                                   // 5k yomi to Synchronize). Stay safely under 1.5 to avoid it.
     const FACTORY_TARGET = 10;     // clip factories to build (wiki: 10 unlocks Upgraded Factories)
 
     // ── Helpers ───────────────────────────────────────────────────────────────
@@ -719,6 +722,8 @@
             case 'set_swarm_think':     success = setSwarmSlider(180); note = '90% Think'; break;
             case 'set_swarm_balanced':  success = setSwarmSlider(100); note = '50% Think'; break;
             case 'set_swarm_work':      success = setSwarmSlider(40);  note = '20% Think'; break;
+            // Recover a "Disorganized" swarm (drone imbalance tipped over) — costs 5k yomi.
+            case 'sync_swarm':          success = clickBtn('btnSynchSwarm'); note = success ? 'synchronized swarm' : 'btnSynchSwarm not found'; break;
 
             // ── Project purchase ──────────────────────────────────────────────
             case 'buy_project': {
