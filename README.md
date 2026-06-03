@@ -244,7 +244,11 @@ Browser-side constants are at the top of `bridge.user.js`:
 - The LLM occasionally produces invalid actions; these are caught and substituted with `wait`.
 - If Ollama is slow to respond, the agent falls back to `wait` for that tick.
 
-**Resolved in v2.0 – v2.5:**
+**Resolved in v2.0 – v2.6:**
+- Stage 2 hard-blocked by a project-name typo ✅ — `Tóth Tubule Enfolding` was misspelled in
+  the auto-buyer's priority list, so the whole manufacturing chain (and clip production) froze
+- Agent looping on an unavailable project ✅ — `buy_project` now falls back to `wait` when the
+  named project isn't in the current list
 - Processor over-allocation / memory stall ✅ — trust allocation now follows the game's real
   memory walls (20 / 70 / 120 / 175 / 250–300), rushing memory to the next wall and
   soft-capping processors at ~half the target, instead of growing them in lockstep
@@ -332,7 +336,19 @@ It's a work in progress. But it works.
 
 ## Version History
 
-**v2.5 (current)**
+**v2.6 (current)**
+
+Unblocked Stage 2 — a single misspelled project name had frozen the entire manufacturing chain.
+
+Key changes:
+- **Stage 2 unblock** — the auto-buyer's priority list spelled the first Stage 2 project
+  `Tóth Tubulue Enfolding`, but the game calls it `Tóth Tubule Enfolding`. Since matching is by
+  substring, it never matched and the 45k-ops project was never bought — freezing every project
+  behind it (and clip production with it). Fixed the spelling. **Requires Tampermonkey redeploy.**
+- **Unavailable-project guard** — the agent no longer wastes ticks on `buy_project` for a
+  project that isn't in the current list (it had been looping on the long-gone `Wirebuyer`).
+
+**v2.5**
 
 Computational-resource strategy rewrite, grounded in the game's actual memory walls.
 
@@ -379,7 +395,7 @@ Key changes:
   domains show their action, JS-handled domains show "auto" (dim gray), and domains not yet
   unlocked show "n/a" (near-invisible). Red "LLM Failed" is now reserved for real failures.
 - **Stage 2 manufacturing project queue** — added all six Stage 2 projects to `PROJECT_PRIORITY`
-  in the correct ops-cost order (Tóth Tubulue Enfolding → Power Grid → Nanoscale Wire
+  in the correct ops-cost order (Tóth Tubule Enfolding → Power Grid → Nanoscale Wire
   Production → Harvester Drones → Wire Drones → Clip Factories).
 
 **v2.2**

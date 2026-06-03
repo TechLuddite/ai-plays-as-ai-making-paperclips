@@ -212,7 +212,9 @@
         'quantum foam annealment',    // 1000% more wire supply per spool
         'hypnodrones',
         // Stage 2 manufacturing (ops-cost, must be purchased in this order)
-        'tóth tubulue enfolding',    // 45k ops — unlocks manufacturing status indicators
+        'tóth tubule enfolding',     // 45k ops — unlocks manufacturing status indicators
+                                     // (game's exact name is "Tóth Tubule Enfolding" — the
+                                     //  earlier "tubulue" typo never matched, blocking Stage 2)
         'power grid',                // 40k ops — unlocks energy production
         'nanoscale wire production', // 35k ops — unlocks wire production indicators
         'harvester drones',          // 25k ops — converts Available Matter → Acquired Matter

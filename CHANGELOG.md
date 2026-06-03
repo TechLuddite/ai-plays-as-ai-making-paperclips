@@ -4,6 +4,30 @@ All notable changes to this project are documented here.
 
 ---
 
+## [2.6] - 2026-06-03
+
+### Fixed
+- **Stage 2 hard-blocked by a project-name typo** (`bridge.user.js` — CRITICAL) — the entire
+  Stage 2 manufacturing chain stalled because `PROJECT_PRIORITY` listed the project as
+  `'tóth tubulue enfolding'` but the game's actual button text is **`Tóth Tubule Enfolding`**
+  (`tubulue` vs `tubule`). `autoSpendOnProjects()` matches by case-insensitive substring, so the
+  keyword never matched and the 45k-ops project was never auto-bought — even with ops maxed at
+  77,000. Because every later manufacturing project (Power Grid, Nanoscale Wire Production,
+  Harvester Drones, Wire Drones, Clip Factories) sits behind it, the whole chain was frozen
+  (clips stuck at 59.6B for hundreds of ticks). Fixed the spelling. **Requires Tampermonkey
+  redeploy.**
+- **LLM looped on an unavailable project** (`agent.py`, `_apply_guards()`) — with Stage 2
+  stuck, the LLM repeatedly emitted `buy_project: Wirebuyer` (a Stage 1 project no longer in
+  the list) → `not found` every tick. Added a guard: `buy_project` is substituted with `wait`
+  when the named project isn't present in the current `availableProjects` string. Stops the
+  failed-buy loop and any future hallucinated project name. Python-only — no redeploy.
+
+### Note
+- v2.5's staged memory ladder was confirmed working in the same logs: memory climbed past the
+  70-memory HypnoDrones wall to 77, and the Yomi-vs-cost OBS hint read correctly ("short by N").
+
+---
+
 ## [2.5] - 2026-06-03
 
 ### Fixed
@@ -112,7 +136,7 @@ All notable changes to this project are documented here.
   for genuine LLM failures on domains it owns.
 - **Stage 2 manufacturing project priority gap** (`bridge.user.js`) — `PROJECT_PRIORITY`
   was missing all six Stage 2 manufacturing projects. Added in correct ops-cost order after
-  `hypnodrones`: Tóth Tubulue Enfolding (45k) → Power Grid (40k) → Nanoscale Wire
+  `hypnodrones`: Tóth Tubule Enfolding (45k) → Power Grid (40k) → Nanoscale Wire
   Production (35k) → Harvester Drones (25k) → Wire Drones (25k) → Clip Factories (35k).
   **Requires Tampermonkey redeploy** (copy bridge.user.js → editor → save → reload page).
 

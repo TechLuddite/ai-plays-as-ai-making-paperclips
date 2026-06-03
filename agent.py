@@ -836,6 +836,18 @@ def run():
                         print(f"[WARN] LLM: buy_project:{args.get('name')!r} — on never-buy list, substituting wait")
                         action = 'wait'
                         break
+            # Block projects that aren't actually available right now. Without this the
+            # LLM can loop forever on a stale or hallucinated project name — observed live:
+            # repeated buy_project:Wirebuyer → "not found" every tick (Wirebuyer was bought
+            # long ago and is no longer in the list). availableProjects holds only the
+            # currently visible, affordable, non-greyed projects, so a partial-name match
+            # against it is the right "is this buyable?" test.
+            if action == 'buy_project' and 'availableProjects' in state:
+                want  = (args.get('name') or '').lower().strip()
+                avail = str(state.get('availableProjects') or '').lower()
+                if want and want not in avail:
+                    print(f"[WARN] LLM: buy_project:{args.get('name')!r} — not in availableProjects, substituting wait")
+                    action = 'wait'
             # Skip if override already queued this action (deduplication)
             if action != 'wait' and action in ov_action_set:
                 print(f"[WARN] LLM: {action} — already in override queue, substituting wait")

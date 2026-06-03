@@ -93,6 +93,21 @@ Python restarts alone do NOT update the browser script.
 - **Xavier Re-initialization appears twice** in project list (game quirk or selector issue).
 - **start.ps1 display quirk**: relay + agent both in same terminal. Deferred.
 
+### RESOLVED IN v2.6
+- **Stage 2 hard-blocked by a project-name typo** ✅ (CRITICAL) — `bridge.user.js`
+  `PROJECT_PRIORITY` listed `'tóth tubulue enfolding'` but the game's button reads
+  `Tóth Tubule Enfolding` (`tubulue` vs `tubule`). `autoSpendOnProjects()` matches by
+  case-insensitive substring, so it never matched — the 45k-ops project was never auto-bought
+  despite ops maxed at 77k, freezing the entire downstream manufacturing chain (Power Grid →
+  Nanoscale Wire → Harvester/Wire Drones → Clip Factories) and clip production (clips stuck at
+  59.6B for hundreds of ticks). Fixed the spelling. REQUIRES Tampermonkey redeploy. Lesson:
+  PROJECT_PRIORITY keywords must match the game's exact DOM button text — verify against
+  `availableProjects` in live state, not memory.
+- **LLM looped on an unavailable project** ✅ — with Stage 2 stuck, the LLM repeatedly emitted
+  `buy_project:Wirebuyer` (a Stage 1 project no longer listed) → `not found` every tick.
+  `_apply_guards()` now substitutes `wait` when the named project isn't in the current
+  `availableProjects` string. Stops failed-buy loops and hallucinated project names. Python-only.
+
 ### RESOLVED IN v2.5
 - **Processor over-allocation — memory held back at the HypnoDrones wall** ✅ — observed live:
   Memory 58 / Processors 57 (near-parity), stalled before the 70-memory HypnoDrones wall. The
@@ -143,7 +158,7 @@ Python restarts alone do NOT update the browser script.
   buffer (`wirePrice × 5`), which is always valid regardless of marketing level
 - LLM domain output "LLM Failed" ✅ — Fix A: agent.py now appends "auto" entries for all
   JS-handled domains; relay.py dashboard renders "auto" as dim gray instead of red "LLM Failed"
-- Stage 2 manufacturing project gap ✅ — Added Tóth Tubulue Enfolding, Power Grid, Nanoscale
+- Stage 2 manufacturing project gap ✅ — Added Tóth Tubule Enfolding, Power Grid, Nanoscale
   Wire Production, Harvester Drones, Wire Drones, Clip Factories to PROJECT_PRIORITY after
   hypnodrones (requires Tampermonkey redeploy)
 
