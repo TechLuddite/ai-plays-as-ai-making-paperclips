@@ -4,6 +4,36 @@ All notable changes to this project are documented here.
 
 ---
 
+## [2.9] - 2026-06-04
+
+LLM-first Stage 2: the model now drives Swarm Computing (the Stage 2 progression engine)
+instead of a JS override — keeping the local LLM central to gameplay.
+
+### Added
+- **LLM-controlled Swarm Computing** (`bridge.user.js`, `agent.py`) — Swarm Gifts are the
+  Stage 2 equivalent of Trust (they fund memory/processors), and memory was frozen at 77 because
+  nothing generated or spent them. Now the **LLM** runs both halves:
+  - **Generate** — three new LLM actions set the Work/Think slider: `set_swarm_think` (90% Think),
+    `set_swarm_balanced` (50%), `set_swarm_work` (20%). Bridge adds `setSwarmSlider()` +
+    `executeAction` cases (sets `#slider`, fires input/change).
+  - **Spend** — `add_memory`/`add_processor` already map to the same buttons; the Stage 2 guard
+    now allows them when a Swarm Gift is available (previously blocked because trust = 0 in Stage 2).
+  - Bridge sends `swarmGifts`, `swarmThink` (slider), `swarmStatus`, `giftCountdown`.
+  - `format_state()` surfaces it with explicit nudges ("SPEND NOW: add_memory → 120",
+    "slider at WORK — set_swarm_think"). SYSTEM_PROMPT gains a Swarm Computing job section with
+    the wiki strategy (Think ~90% until memory 120, then balance; spend gifts on memory→120 then
+    processors). "Swarm Computing" is now an LLM-owned domain (its own Action line + dashboard cell).
+  **Requires Tampermonkey redeploy.**
+
+### Fixed
+- **LLM `lower_price` loop in Stage 2** (`agent.py`) — the LLM spammed `lower_price` (failing)
+  on a Stage-1 wire/demand misread. Taught it the Stage 2 reality instead of hard-coding around it:
+  the OBS now says wire = 0 is NORMAL in Stage 2 (drones feed factories live), the SYSTEM_PROMPT
+  says never price in Stage 2, and a guard substitutes `wait` for `lower_price`/`raise_price` once
+  `portValue` is present (backstop).
+
+---
+
 ## [2.8] - 2026-06-03
 
 ### Changed

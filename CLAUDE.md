@@ -51,8 +51,12 @@ Flask Relay → browser polls GET /action (includes thought) → executes click
 
 **LLM Agent (ReAct loop — every 2 seconds):**
 - Strategic decisions across ALL visible game domains every tick
-- One Action line per domain (Business, Manufacturing, Computational Resources,
-  Quantum Computing, Projects, Investments, Strategic Modeling, Probes in Stage 3)
+- One Action line per active LLM-owned domain, in order: Projects, Investments (Stage 2),
+  Swarm Computing (Stage 2), Probes (Stage 3); plus a Status grade line for the auto domains
+- **Swarm Computing (Stage 2)** — the LLM owns it (v2.9): sets the Work/Think slider
+  (set_swarm_think/balanced/work) and spends Swarm Gifts on memory/processors (add_memory/
+  add_processor). Swarm Gifts are the Stage 2 "trust". This is deliberately LLM-driven, not a
+  JS override — keeping the model central to gameplay.
 - Phase transition awareness, project prioritization for edge cases
 - Any decision requiring tradeoff reasoning
 
@@ -94,35 +98,26 @@ Python restarts alone do NOT update the browser script.
 ## Known Issues
 
 ### ACTIVE — HIGH PRIORITY
-- **Stage 2 Swarm Gifts unhandled — agent isn't spending them (Swarm Gifts ARE the Stage 2
-  "Trust")** (`agent.py` + `bridge.user.js`) — in Stage 2, memory/processors come from SWARM
-  GIFTS (generated when drones "think"), exactly as Trust funded them in Stage 1. The agent has
-  no code for either side: it does NOT spend the gifts it receives (observed live: 1 gift sitting
-  unspent), AND it doesn't generate them — the Work/Think slider (`#slider`, range 0–200) sits at
-  0 (all Work), so "Next gift in Infinity hours" and memory is frozen at 77. That blocks the
-  ops-heavy Stage 2 upgrades (Upgraded/Hyperspeed Factories, Drone flocking — need memory 80–100)
-  and Space Exploration (needs memory 120). FIX (two parts): (1) bridge — send `swarmGifts`,
-  slider value, `swarmStatus`/`giftCountdown`; add a fast rule to set `#slider` toward Think
-  (wiki: 50–70% Think) to generate gifts. (2) agent — spend gifts via the EXISTING
-  `btnAddMem`/`btnAddProc` buttons (same as trust); `check_trust_action()` already knows the
-  memory milestone ladder (→120) but bails when trust=0 — make it use `swarmGifts` as the
-  spendable currency in Stage 2. STRATEGY NOTE: Work/Think is a tradeoff (Work=production,
-  Think=gifts); needs a balance choice. Tampermonkey redeploy required. This is the current
-  Stage 2 progression blocker.
+*(none — Swarm Gifts now LLM-driven in v2.9)*
 
 ### ACTIVE — LOW PRIORITY
-- **LLM loops on `lower_price` in Stage 2 (Stage-1 wire/demand misread)** — observed live: the
-  LLM emits `lower_price` nearly every tick (result ✗ failed), thinking "wire critically low at
-  N inches, demand 498%, unsold high." In Stage 2 this is wrong: wire reads low/0 because drones
-  feed it to factories in real time (not an emergency), pricing is JS-handled, and clips SHOULD
-  accumulate. Harmless (the failed action does nothing, JS runs production) but wastes LLM
-  attention and clutters the log. FIX IDEAS: suppress Stage-1 pricing reasoning when in Stage 2
-  (e.g. don't surface `lower_price`/wire-emergency framing once `performance`/`portValue` present),
-  or guard `lower_price`/`raise_price` to no-op in Stage 2. Python/prompt-only, no redeploy.
 - **Dashboard needs further refinement** — the v2.8 stage-grouped layout is a first pass; owner
   will scope specific dashboard changes in a later request. Placeholder until then.
 - **Xavier Re-initialization appears twice** in project list (game quirk or selector issue).
 - **start.ps1 display quirk**: relay + agent both in same terminal. Deferred.
+
+### RESOLVED IN v2.9
+- **Stage 2 Swarm Gifts now LLM-driven** ✅ — Swarm Gifts are the Stage 2 "trust" (fund
+  memory/processors); memory was frozen at 77 because nothing generated or spent them. Made it
+  LLM-OWNED (not a JS override, per the project vision): 3 new slider actions
+  (set_swarm_think/balanced/work) + gift-spending via add_memory/add_processor (Stage 2 guard now
+  allows them when a gift is available). Bridge sends swarmGifts/swarmThink/swarmStatus/giftCountdown
+  + setSwarmSlider(); OBS nudges + SYSTEM_PROMPT Swarm job section (wiki strategy: Think ~90% until
+  memory 120, then balance; spend gifts on memory→120 then processors). "Swarm Computing" is now an
+  LLM-owned dashboard domain. Requires Tampermonkey redeploy.
+- **LLM lower_price loop in Stage 2** ✅ — taught the LLM (OBS: wire=0 is normal in Stage 2;
+  SYSTEM_PROMPT: never price in Stage 2) + guard substitutes wait for lower_price/raise_price once
+  portValue present. (Fixed by teaching the LLM, not removing its agency.)
 
 ### RESOLVED IN v2.7
 - **Stage 2 Power domain unhandled — agent was blind to it** ✅ — when Power Grid unlocked,

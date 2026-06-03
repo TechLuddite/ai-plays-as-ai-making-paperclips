@@ -251,7 +251,10 @@ Browser-side constants are at the top of `bridge.user.js`:
 - The LLM occasionally produces invalid actions; these are caught and substituted with `wait`.
 - If Ollama is slow to respond, the agent falls back to `wait` for that tick.
 
-**Resolved in v2.0 – v2.7:**
+**Resolved in v2.0 – v2.9:**
+- Stage 2 Swarm Gifts unhandled ✅ — now LLM-driven: the model sets the Work/Think slider and
+  spends gifts on memory/processors (the Stage 2 "trust")
+- LLM lower_price loop in Stage 2 ✅ — taught the model that wire=0 is normal in Stage 2
 - Stage 2 Power domain unhandled ✅ — the agent now sees and auto-builds the full power +
   manufacturing engine (solar, batteries, drones, factories) instead of being blind to it
 - Stage 2 hard-blocked by a project-name typo ✅ — `Tóth Tubule Enfolding` was misspelled in
@@ -345,7 +348,18 @@ It's a work in progress. But it works.
 
 ## Version History
 
-**v2.8 (current)**
+**v2.9 (current)**
+
+LLM-first Stage 2. The local model now drives **Swarm Computing** — the Stage 2 progression
+engine — instead of a JS override, in line with the project's vision of keeping the LLM central.
+Swarm Gifts are the Stage 2 equivalent of Trust (they fund memory/processors), and memory had been
+frozen because nothing generated or spent them. Now the LLM controls the Work/Think slider
+(`set_swarm_think`/`balanced`/`work`) to generate gifts, and spends them on memory (toward the
+120 needed for Space Exploration) then processors — guided by the wiki strategy baked into the
+prompt. Also taught the LLM that wire = 0 is normal in Stage 2, ending the `lower_price` loop.
+**Requires Tampermonkey redeploy.**
+
+**v2.8**
 
 Dashboard overhaul — the decisions view is now grouped into three stage sections (Stage 1 — Core,
 Stage 2 — Industry, Stage 3 — Space), so the new Stage 2 domains (Power, Wire Production, Swarm

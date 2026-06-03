@@ -51,6 +51,14 @@ VALID ACTIONS — use exactly one, spelled exactly as shown:
     set_strategy_random         — set tournament strategy to RANDOM (do once on unlock)
     run_tournament              — run a single tournament manually (costs 1,000 ops)
 
+  SWARM COMPUTING (Stage 2 — when swarmGifts / swarmThink appear in state):
+    set_swarm_think             — slider to 90% Think: drones make Swarm Gifts fast (grows memory)
+    set_swarm_balanced          — slider to 50%: balance gifts with production
+    set_swarm_work              — slider to 20% Think: favor production (clips/matter)
+    add_memory                  — spend ONE Swarm Gift on memory (raises ops ceiling toward 120)
+    add_processor               — spend ONE Swarm Gift on a processor (ops regen / creativity)
+    (In Stage 2, Swarm Gifts are your "trust": add_memory/add_processor spend a gift, not trust.)
+
   INVESTMENTS (Stage 2 — only when portValue appears in state):
     invest_deposit              — move available funds into investment bankroll
     invest_withdraw             — pull investment bankroll back to available funds
@@ -85,7 +93,9 @@ WHAT THE AGENT HANDLES AUTOMATICALLY — never choose these:
   - Projects in the auto-buy queue: wirebuyer, improved/optimized autoclippers,
     microlattice shapecasting, catchy jingle, quantum computing, algorithmic trading,
     strategic modeling, and most ops/creativity-cost projects
-  - Trust allocation (add_memory, add_processor) — override fires whenever trust is free
+  - STAGE 1 trust allocation (add_memory, add_processor) — override fires whenever TRUST is
+    free. (Stage 2 is different: there's no trust — YOU spend Swarm Gifts on memory/processors.
+    See "YOUR JOB" item 2. Don't expect the override to do it in Stage 2.)
   - Investment deposits, withdrawals, risk strategy
     (invest_deposit, invest_withdraw, set_invest_low/med/hi) — override-managed every tick
   - AutoTourney toggling (toggle_auto_tourney) — kept ON by override
@@ -112,50 +122,71 @@ YOUR JOB — work through this priority list each tick:
    (Strategy selection and AutoTourney toggling are handled by override — you never
    need to choose set_strategy_random or toggle_auto_tourney.)
 
-2. STAGE 2 CONTEXT (when portValue is visible — Algorithmic Trading purchased):
+2. SWARM COMPUTING / STAGE 2 MEMORY (when swarmGifts or swarmThink appear in state):
+   This is YOUR JOB in Stage 2 — Swarm Gifts are the Stage 2 equivalent of Trust, and the
+   game will NOT spend them for you. Memory raises your ops ceiling (memory × 1000); you need
+   memory 120 to unlock Space Exploration, passing 80 and 100 (which unlock Drone-flocking and
+   factory upgrades) on the way. Two levers:
+   a) GENERATE gifts via the Work/Think slider. Gifts only appear when drones "think".
+      - While memory < 120: set_swarm_think (≈90% Think) — rush memory to the wall.
+        (If the OBS shows the slider at Work / "Next gift in Infinity", you MUST set_swarm_think,
+         or no gifts ever come and memory stays stuck.)
+      - Once memory ≥ 120: set_swarm_balanced (≈50%) to favor production again.
+   b) SPEND gifts when swarmGifts ≥ 1: add_memory until memory reaches 120, then add_processor.
+      Each add_memory/add_processor spends ONE gift. Keep memory ahead; processors ~half of memory.
+   Do at most one of these per tick (whichever matters most): set the slider if it's wrong, else
+   spend a gift if one is available, else nothing.
+
+3. STAGE 2 CONTEXT (when portValue is visible — Algorithmic Trading purchased):
    Revenue now comes from the investment engine, NOT clip sales. Large unsold clip counts
    are CORRECT — you need 5 octillion clips to reach Stage 3 (Space Exploration).
-   Do NOT try to "fix" inventory by recommending price cuts — the fast rules handle pricing
-   and the Stage 2 goal is production volume, not clearing inventory.
+   In Stage 2, clip production is run by drones+factories (fast rules). WIRE = 0 IS NORMAL:
+   wire drones feed wire to the factories in real time, so the wire buffer reads ~0 while
+   production is healthy — this is NOT an emergency. NEVER use lower_price / raise_price in
+   Stage 2 (clips must accumulate; pricing is irrelevant and the fast rules handle it).
    Your Stage 2 priorities:
-   a) upgrade_investment when yomi >= investUpgradeCost
-   b) buy Stage 2 projects when affordable (they unlock production capacity)
-   c) Otherwise: nothing — let the overrides and fast rules manage everything else
+   a) Swarm Computing (item 2) — generate + spend gifts to grow memory toward 120
+   b) upgrade_investment when yomi >= investUpgradeCost
+   c) buy Stage 2 projects when affordable (they unlock production capacity)
+   d) Otherwise: nothing — let the overrides and fast rules manage everything else
 
    INVESTMENTS: Deposits, withdrawals, and risk strategy are ALL managed by hard overrides.
    Your ONLY investment action: upgrade_investment — ONLY when yomi >= investUpgradeCost.
 
-3. PROJECTS — only when a non-greyed clickable project appears that is NOT in the
+4. PROJECTS — only when a non-greyed clickable project appears that is NOT in the
    auto-buy list above (check availableProjects carefully — greyed = unavailable)
    NEVER buy Xavier Re-initialization — it costs 100,000 creativity AND resets ALL
    processor/memory trust to zero, destroying the computational resources built up
    over the entire run. It is blocked by a hard guard regardless.
    NEVER buy Quantum Temporal Reversion — it resets game state backward.
 
-4. STAGE 3 PROBE DESIGN (when colonized appears in state):
+5. STAGE 3 PROBE DESIGN (when colonized appears in state):
    - Self-Replication (rep) and Speed are highest leverage early — low rep stalls exploration
    - Hazard Remediation (haz) sweet spot: 5-6 points; below 3 causes heavy probe losses
    - If drifters > 0 and probeTotal falling → raise Combat immediately
    - Fac, Harv, Wire drive production — keep roughly balanced
    - increase_probe_trust expands your total probe budget (costs Yomi; ~1.89M total to max)
 
-5. WAIT — if nothing needs strategic attention this tick
+6. WAIT — if nothing needs strategic attention this tick
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-TRUST NOTE (informational only — do not act on it):
-  Trust allocation is fully automatic. The override fires add_memory/add_processor
-  whenever trust is available. If state shows "(fully allocated — none to spend)",
-  trust is maxed out — skip to item 1 above.
+TRUST NOTE:
+  STAGE 1: trust allocation is automatic — the override fires add_memory/add_processor
+  whenever TRUST is available. If state shows "(fully allocated — none to spend)", skip it.
+  STAGE 2: there is NO trust income — memory/processors come from SWARM GIFTS, which YOU
+  spend (item 2). add_memory/add_processor in Stage 2 spend a gift, not trust.
 
 PRICING NOTE:
   Fast rules handle all routine price changes — do NOT use raise_price / lower_price
   unless the fast rules are clearly broken.
   - Stage 1 (no investments): rules target demand 200–500% and keep inventory < ~10s
     of production. Intervene only if demand is truly stuck at 0%.
-  - Stage 2 (investments active): clips MUST ACCUMULATE. Stage 3 requires 5 octillion
-    clips — unsold inventory is not waste, it is the resource. Revenue comes from the
-    investment engine, not clip sales. Large unsold counts are correct in Stage 2.
-  Wire: 1000+ inches is healthy.
+  - Stage 2 (investments active): NEVER use lower_price / raise_price. Clips MUST ACCUMULATE
+    (Stage 3 needs 5 octillion) — unsold inventory and high demand are CORRECT, not problems
+    to fix. Revenue comes from the investment engine, not clip sales.
+  WIRE: in Stage 1, 1000+ inches is healthy. In Stage 2, wire = 0 is NORMAL — wire drones
+  feed it straight to the factories, so the buffer stays near 0 while production is healthy.
+  Do NOT treat Stage 2 wire=0 as an emergency or a reason to change price.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 DOMAIN STATUS GRADING (advisory only — you do NOT act on these):
@@ -195,11 +226,15 @@ Use "nothing" when a domain needs no action this tick.
 Output the action name ONLY — no domain labels, no brackets, no inline comments.
 
   Thought: <cite specific numbers — what you see and why you're acting>
-  Action: <buy_project:Name  OR  nothing>     ← Projects — ALWAYS required
+  Action: <buy_project:Name  OR  nothing>     ← Projects — ALWAYS required (line 1)
   Action: <upgrade_investment  OR  nothing>   ← Investments — add when portValue in state
+  Action: <set_swarm_think / add_memory / nothing>  ← Swarm Computing — add when swarmGifts/swarmThink in state
   Action: <probe action  OR  nothing>         ← Probes — add when colonized in state
   Status: Business=token, Manufacturing=token, CompRes=token, QuantumComp=token, StratModel=token
                                               ← grades for auto domains — ALWAYS last line
+
+KEEP THE ACTION LINES IN THIS ORDER: Projects, Investments, Swarm Computing, Probes.
+Only include the lines for domains active in the current state (Projects is always present).
 
 EXAMPLES — copy this exact style:
 
@@ -208,20 +243,23 @@ EXAMPLES — copy this exact style:
     Action: nothing
     Status: Business=healthy, Manufacturing=healthy, CompRes=healthy, QuantumComp=auto, StratModel=auto
 
-  Stage 2 (portValue visible in state):
-    Thought: Photonic Chip costs 11,000 ops, have 12,500. Yomi 320 > upgrade cost 100.
-    Action: buy_project:Photonic Chip
-    Action: upgrade_investment
-    Status: Business=healthy, Manufacturing=warn, CompRes=healthy, QuantumComp=healthy, StratModel=healthy
+  Stage 2 — slider at Work, memory 77 < 120, no gift yet → start the swarm thinking:
+    Thought: Memory 77, need 120 for Space Exploration. Slider at Work, gifts at Infinity. Yomi short.
+    Action: nothing
+    Action: nothing
+    Action: set_swarm_think
+    Status: Business=healthy, Manufacturing=healthy, CompRes=warn, QuantumComp=healthy, StratModel=healthy
 
-  Stage 2 — nothing to do, but wire running low:
-    Thought: No affordable projects. Yomi=0, upgrade costs 100. Wire only 60 inches — fast rules slow.
+  Stage 2 — a Swarm Gift is available and memory still below 120 → spend it on memory:
+    Thought: swarmGifts=1, memory 92 < 120. Slider already Think. Spend the gift on memory.
     Action: nothing
     Action: nothing
-    Status: Business=healthy, Manufacturing=critical, CompRes=healthy, QuantumComp=healthy, StratModel=healthy
+    Action: add_memory
+    Status: Business=healthy, Manufacturing=healthy, CompRes=healthy, QuantumComp=healthy, StratModel=healthy
 
   Stage 3 (colonized visible, portValue visible):
     Thought: colonized=38%. Rep=2 critically low, stalling replication. Yomi=0, can't upgrade.
+    Action: nothing
     Action: nothing
     Action: nothing
     Action: raise_probe_rep
@@ -235,10 +273,11 @@ RULES:
    ✗  Action: [buy_project:Name]      ← WRONG — brackets not allowed
 2. The Projects Action line is ALWAYS required every single tick.
 3. Add the Investments Action line whenever portValue appears in the state.
-4. Add the Probes Action line whenever colonized appears in the state.
-5. buy_project: write the exact project name after the colon — nothing else on that line.
-6. Pricing (raise_price / lower_price) is optional — only if fast rules are clearly stuck.
-7. The Status line is ALWAYS the LAST line. One token per domain (healthy/warn/
+4. Add the Swarm Computing Action line whenever swarmGifts or swarmThink appear in the state.
+5. Add the Probes Action line whenever colonized appears in the state.
+6. buy_project: write the exact project name after the colon — nothing else on that line.
+7. NEVER use raise_price / lower_price in Stage 2 (portValue present) — clips must accumulate.
+8. The Status line is ALWAYS the LAST line. One token per domain (healthy/warn/
    critical/auto). It grades auto domains only — it never causes an action.
 """
 
@@ -303,6 +342,8 @@ def format_state(state):
         'investStrategy', 'investLevel', 'investUpgradeCost',
         # Stage 2 manufacturing / power (handled by JS fast rules — shown for visibility/grading)
         'unusedClips',
+        # Stage 2 swarm computing (LLM-driven: slider + gift spending)
+        'swarmGifts', 'swarmThink', 'swarmStatus',
         'performance', 'powerProduction', 'powerConsumption',
         'farmLevel', 'batteryLevel', 'factoryLevel',
         'harvesterLevel', 'wireDroneLevel',
@@ -324,8 +365,11 @@ def format_state(state):
         flag = ""
         fv = safe_float(v, fallback=-1)
         if k == 'wire':
-            if fv == 0:    flag = " ⚠ EMPTY"
-            elif fv < 100: flag = " ⚠ LOW"
+            stage2 = bool(state.get('portValue', '')) or state.get('performance') is not None
+            if stage2:
+                flag = " (Stage 2: ~0 is NORMAL — wire drones feed factories live, not an emergency)"
+            elif fv == 0:    flag = " ⚠ EMPTY"
+            elif fv < 100:   flag = " ⚠ LOW"
         if k == 'funds' and 0 <= fv < 2:
             flag = " ⚠ BROKE"
         if k == 'demand' and fv > 150:
@@ -363,6 +407,23 @@ def format_state(state):
                             f"(short by {short_by:,}) — cannot upgrade yet")
         if k == 'portValue' and fv > 0:
             flag = " ← grow via invest_deposit / upgrade_investment"
+        if k == 'swarmGifts' and fv >= 1:
+            # Swarm Gifts = the Stage 2 "trust". Tell the LLM exactly what to spend them on.
+            mem_now = safe_float(state.get('memory'), 0)
+            if mem_now < 120:
+                flag = f" → SPEND NOW: add_memory (memory {int(mem_now)} → 120 for Space Exploration)"
+            else:
+                flag = " → SPEND NOW: add_processor (memory target met — build regen/creativity)"
+        if k == 'swarmThink':
+            # Work/Think slider 0–200 (0 = all Work, 200 = all Think).
+            mem_now = safe_float(state.get('memory'), 0)
+            if fv <= 0:
+                flag = " ⚠ at WORK — NO gifts generating; set_swarm_think to grow memory toward 120"
+            else:
+                pct = int(fv / 2)
+                flag = f" (~{pct}% Think)"
+                if mem_now < 120 and pct < 80:
+                    flag += " — memory<120, consider set_swarm_think (~90%) to rush it"
         if k == 'performance' and fv >= 0:
             # Factory/Drone Performance — Stage 2 power health (JS auto-builds solar farms).
             # NOTE: performance reads 0 when there are no consumers yet (cold start) — that's
@@ -573,7 +634,11 @@ DOMAIN_REGISTRY = [
     ("Investments",             2),
     ("Probes",                  3),
 ]
-LLM_OWNED_DOMAINS = {"Projects", "Investments", "Probes"}
+# LLM-owned domains take a real LLM action each tick (shown directly on the dashboard).
+# Swarm Computing joined in v2.9: the LLM controls the Work/Think slider AND spends Swarm
+# Gifts on memory/processors (the Stage 2 "trust") — keeping the model in the driver's seat
+# rather than adding another JS override.
+LLM_OWNED_DOMAINS = {"Projects", "Investments", "Swarm Computing", "Probes"}
 # These five are graded by the LLM's advisory Status line (v2.4).
 LLM_GRADED_DOMAINS = {"Business", "Manufacturing", "Computational Resources",
                       "Quantum Computing", "Strategic Modeling"}
@@ -595,7 +660,8 @@ def compute_stage2_grade(domain, state):
         if harv < 0 and wired < 0:
             return None                      # not unlocked
         return 'healthy' if (harv >= 1 and wired >= 1) else 'warn'
-    # Swarm Computing: not graded yet (bridge doesn't send swarmGifts) — show plain "auto".
+    # Swarm Computing is LLM-OWNED (v2.9) — the LLM acts on it directly, so it never reaches
+    # this computed-grade path. (Only Power and Wire Production are computed here.)
     return None
 
 def domain_is_active(domain, state):
@@ -628,6 +694,8 @@ def validate_action(action):
         'buy_wire', 'buy_autoclipper', 'buy_megaclipper', 'make_paperclip',
         # strategic modeling / autotourney
         'toggle_auto_tourney', 'set_strategy_random', 'run_tournament',
+        # swarm computing (Stage 2) — Work/Think slider; gifts spent via add_memory/add_processor
+        'set_swarm_think', 'set_swarm_balanced', 'set_swarm_work',
         # investments
         'invest_deposit', 'invest_withdraw',
         'set_invest_low', 'set_invest_med', 'set_invest_hi',
@@ -883,8 +951,21 @@ def run():
             _t = safe_float(state.get('trust'), 0)
             _p = safe_float(state.get('processors'), 0)
             _m = safe_float(state.get('memory'), 0)
-            if action in ('add_memory', 'add_processor') and _t - _p - _m < 1:
-                print(f"[WARN] LLM: {action} — trust fully allocated, substituting wait")
+            # add_memory/add_processor spend a resource: Trust in Stage 1, a Swarm Gift in
+            # Stage 2. Block only when NEITHER is available (so the LLM can spend gifts).
+            _gifts = safe_float(state.get('swarmGifts'), 0)
+            if action in ('add_memory', 'add_processor') and (_t - _p - _m) < 1 and _gifts < 1:
+                print(f"[WARN] LLM: {action} — no trust or swarm gift to spend, substituting wait")
+                action = 'wait'
+            # Stage 2: pricing is irrelevant (clips must accumulate). Block the LLM's lingering
+            # Stage-1 instinct to lower_price/raise_price — it was looping on this and failing.
+            if action in ('lower_price', 'raise_price') and state.get('portValue', ''):
+                print(f"[WARN] LLM: {action} — irrelevant in Stage 2 (clips accumulate), substituting wait")
+                action = 'wait'
+            # Swarm slider only meaningful once Stage 2 manufacturing/swarm is unlocked.
+            if action in ('set_swarm_think', 'set_swarm_balanced', 'set_swarm_work') \
+                    and state.get('performance') is None:
+                print(f"[WARN] LLM: {action} — swarm not active yet, substituting wait")
                 action = 'wait'
             if action in invest_actions and not state.get('portValue', ''):
                 print(f"[WARN] LLM: {action} — investment system not active, substituting wait")
@@ -980,10 +1061,13 @@ def run():
         #   - domains not yet unlocked                          → "n/a"
         #
         # Map each LLM-owned domain to its action. The LLM emits one Action line per active
-        # LLM-owned domain in this order: Projects, then Investments (Stage 2), then Probes.
+        # LLM-owned domain in this order (must match the SYSTEM_PROMPT template):
+        #   Projects, Investments (Stage 2), Swarm Computing (Stage 2), Probes (Stage 3).
         llm_owned_order = ["Projects"]
         if state.get('portValue', ''):
             llm_owned_order.append("Investments")
+        if state.get('performance') is not None:        # Stage 2 manufacturing/swarm unlocked
+            llm_owned_order.append("Swarm Computing")
         if state.get('colonized'):
             llm_owned_order.append("Probes")
         llm_action_by_domain = {}

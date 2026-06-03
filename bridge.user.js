@@ -60,6 +60,17 @@
         return false;
     }
 
+    // Set the Stage 2 Work/Think slider (#slider, range 0–200). Fires both 'input' and
+    // 'change' so the game registers the programmatic move (same pattern as the selects).
+    function setSwarmSlider(value) {
+        const el = document.getElementById('slider');
+        if (!el) return false;
+        el.value = value;
+        el.dispatchEvent(new Event('input',  { bubbles: true, cancelable: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true, cancelable: true }));
+        return true;
+    }
+
     // ── Wire detection ────────────────────────────────────────────────────────
     // Phase 1: wire is in span#wire (inside manufacturingDiv)
     // Phase 3: wire is in span#nanoWire (wire drone production)
@@ -128,8 +139,14 @@
 
     function getStage2State() {
         if (!isVisible('powerDiv') && !isVisible('factoryDiv')) return {};
+        const sliderEl = document.getElementById('slider');
         return {
             unusedClips:      getText('unusedClipsDisplay'),    // spendable clip pool (Stage 2 currency)
+            // Swarm Computing — Swarm Gifts are the Stage 2 "trust" (fund memory/processors).
+            swarmGifts:       getText('swarmGifts'),            // unspent gifts available now
+            swarmStatus:      getText('swarmStatus'),           // Active / Lonely / Bored ...
+            giftCountdown:    getText('giftCountdown'),         // "Next gift in N seconds" / Infinity
+            swarmThink:       sliderEl ? sliderEl.value : null, // Work/Think slider 0–200 (0=Work)
             performance:      getText('performance'),          // Factory/Drone Performance %
             powerProduction:  getText('powerProductionRate'),  // MW produced (solar)
             powerConsumption: getText('powerConsumptionRate'), // MW consumed (drones+factories)
@@ -695,6 +712,13 @@
             case 'make_paperclip':   success = clickBtn('btnMakePaperclip');    break;
             case 'add_processor':    success = clickBtn('btnAddProc');          break;
             case 'add_memory':       success = clickBtn('btnAddMem');           break;
+
+            // ── Swarm Computing: Work/Think slider (Stage 2) ──────────────────
+            // #slider range 0–200: 0 = all Work (production), 200 = all Think (Swarm Gifts).
+            // The LLM picks the balance; gifts fund memory/processors (the Stage 2 "trust").
+            case 'set_swarm_think':     success = setSwarmSlider(180); note = '90% Think'; break;
+            case 'set_swarm_balanced':  success = setSwarmSlider(100); note = '50% Think'; break;
+            case 'set_swarm_work':      success = setSwarmSlider(40);  note = '20% Think'; break;
 
             // ── Project purchase ──────────────────────────────────────────────
             case 'buy_project': {
