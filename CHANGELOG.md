@@ -4,6 +4,32 @@ All notable changes to this project are documented here.
 
 ---
 
+## [2.7.1] - 2026-06-03
+
+### Fixed
+- **Stage 2 builder cold-start deadlock** (`bridge.user.js`) — the v2.7 rule used
+  `performance < 100` as its "build solar" trigger, but performance reads **0 when there are
+  no consumers yet** (nothing to perform). So at cold start the condition was always true: it
+  poured the spendable clip pool into Solar Farms (7 built, ~53B clips) until the next farm
+  (~32B) was unaffordable, then did nothing every tick — the drone/factory builders were also
+  gated behind `performance`, so production never started (clipRate stuck at 0). Rewrote the
+  rule to drive off **power production vs consumption** instead of performance:
+  - Build solar only on a real deficit (`production < consumption × margin`) or as a small
+    cold-start baseline (`SOLAR_MIN` lowered 30 → 5; the cost curve is steep).
+  - Build consumers into **spare power** (headroom = production − consumption), balancing
+    factories vs drones by target progress so it can't build "all drones, no factory."
+  - Baseline solar now **falls through** when unaffordable instead of returning, so the cheap
+    first factory (100M clips) isn't blocked.
+  - Batteries demoted to lowest priority (built only once consumers are at target) — they were
+    about to eat the factory budget.
+- **Bridge now sends `unusedClips`** (`unusedClipsDisplay`) — the actual Stage 2 spendable
+  pool. The existing `clips` field is all-time total (never decreases), which hid that the 7
+  farms had drained the spendable pool from ~59B to ~6.7B. `format_state()` shows it, and no
+  longer falsely flags "UNDERPOWERED" at cold start (only when consumers exist).
+  **Requires Tampermonkey redeploy.**
+
+---
+
 ## [2.7] - 2026-06-03
 
 ### Added

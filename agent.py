@@ -302,6 +302,7 @@ def format_state(state):
         'portValue', 'investBankroll', 'investStocks',
         'investStrategy', 'investLevel', 'investUpgradeCost',
         # Stage 2 manufacturing / power (handled by JS fast rules — shown for visibility/grading)
+        'unusedClips',
         'performance', 'powerProduction', 'powerConsumption',
         'farmLevel', 'batteryLevel', 'factoryLevel',
         'harvesterLevel', 'wireDroneLevel',
@@ -364,10 +365,15 @@ def format_state(state):
             flag = " ← grow via invest_deposit / upgrade_investment"
         if k == 'performance' and fv >= 0:
             # Factory/Drone Performance — Stage 2 power health (JS auto-builds solar farms).
-            if fv < 100:
+            # NOTE: performance reads 0 when there are no consumers yet (cold start) — that's
+            # not "underpowered", so only warn when consumers actually exist (consumption > 0).
+            cons = safe_float(state.get('powerConsumption'), 0)
+            if cons > 0 and fv < 100:
                 flag = " ⚠ UNDERPOWERED — JS building solar farms (Manufacturing=warn)"
-            else:
+            elif cons > 0:
                 flag = " ✓ fully powered"
+            else:
+                flag = " (no consumers yet — JS building the first factory/drones)"
         if k == 'powerConsumption':
             prod = safe_float(state.get('powerProduction'), -1)
             if prod >= 0 and fv > prod:

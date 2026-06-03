@@ -27,8 +27,10 @@
     // hundreds of thousands of drones, 10M MW-seconds of storage for Space Exploration).
     const STAGE2_MS      = 800;    // how often the Stage 2 builder acts (ms)
     const POWER_MARGIN   = 1.10;   // keep power production >= consumption × this
-    const SOLAR_MIN      = 30;     // baseline solar farms to build early (wiki: ~30)
-    const BATTERY_MIN    = 20;     // baseline battery towers (cheap power hedge)
+    const SOLAR_MIN      = 5;      // cold-start baseline solar farms (cost grows STEEPLY —
+                                   //   ~32B clips for the 8th — so keep the baseline small and
+                                   //   let production-funded deficit-provisioning scale it up)
+    const BATTERY_MIN    = 20;     // battery towers (cheap hedge; built last, after consumers)
     const DRONE_TARGET   = 500;    // total drones to build (wiki: "leave drones at 500")
     const DRONE_RATIO    = 1.618;  // wire drones ÷ harvester drones (golden ratio; >1.5 imbalance breaks the swarm)
     const FACTORY_TARGET = 10;     // clip factories to build (wiki: 10 unlocks Upgraded Factories)
@@ -127,6 +129,7 @@
     function getStage2State() {
         if (!isVisible('powerDiv') && !isVisible('factoryDiv')) return {};
         return {
+            unusedClips:      getText('unusedClipsDisplay'),    // spendable clip pool (Stage 2 currency)
             performance:      getText('performance'),          // Factory/Drone Performance %
             powerProduction:  getText('powerProductionRate'),  // MW produced (solar)
             powerConsumption: getText('powerConsumptionRate'), // MW consumed (drones+factories)
@@ -387,14 +390,23 @@
     }
 
     // ── Auto-build Stage 2 manufacturing (Power + Drones + Factories) ───────────
-    // Stage 2 is a power-management game. We build toward the targets at the top of the
-    // file, paying in clips. The game DISABLES a build button when you can't afford it,
-    // so gating on `!btn.disabled` makes overspending impossible and self-paces against
-    // the exponentially rising costs. Order of priority each tick:
-    //   1. POWER FIRST — chase solar farms so Factory/Drone Performance stays ≥ 100%
-    //   2. baseline solar + cheap battery storage
-    //   3. drones toward target, kept at the golden-ratio mix (wire ≈ 1.618 × harvester)
-    //   4. clip factories toward target (only added while fully powered)
+    // Stage 2 is a power-management game. Everything is paid in CLIPS (the spendable
+    // "Unused Clips" pool), and the game DISABLES a build button when you can't afford it,
+    // so gating on `!btn.disabled` makes overspending impossible and self-paces against the
+    // exponentially rising costs.
+    //
+    // IMPORTANT: we drive off POWER PRODUCTION vs CONSUMPTION, never off "performance".
+    // Performance reads 0 until consumers exist, so using it as the solar trigger
+    // deadlocks the cold start (dump all clips into solar, never build the factories/drones
+    // that actually start production). Instead we keep a power surplus (headroom) and build
+    // consumers into it; factories convert wire→clips, drones make the wire — both needed.
+    //
+    // Priority each tick:
+    //   1. real power DEFICIT (consumers outrunning production) → add solar
+    //   2. cold-start baseline solar (falls through if unaffordable)
+    //   3. CONSUMERS into spare power — factories + drones, balanced by target progress
+    //   4. grow solar when we want consumers but lack headroom
+    //   5. batteries — low-priority cheap hedge, only once consumers are at target
     let lastStage2Click = 0;
 
     // Click a build button only if it exists, is visible, and is affordable (!disabled).
@@ -412,7 +424,6 @@
         if (!isVisible('powerDiv')) return;                       // domain not unlocked yet
         if (Date.now() - lastStage2Click < STAGE2_MS) return;     // rate limit
 
-        const perf      = getNum('performance', 100);
         const prod      = getNum('powerProductionRate', 0);
         const cons      = getNum('powerConsumptionRate', 0);
         const farms     = getNum('farmLevel', 0);
@@ -420,31 +431,40 @@
         const factories = getNum('factoryLevelDisplay', 0);
         const harv      = getNum('harvesterLevelDisplay', 0);
         const wireD     = getNum('wireDroneLevelDisplay', 0);
+        const drones    = harv + wireD;
+        const headroom  = prod - cons;                            // spare MW
 
-        // 1) POWER FIRST: keep production ahead so performance never drops below 100%.
-        //    Use the +10 button to catch up fast, falling back to a single farm.
-        if (perf < 100 || (cons > 0 && prod < cons * POWER_MARGIN)) {
+        // 1) REAL POWER DEFICIT: consumers exist and production has fallen behind → solar.
+        if (cons > 0 && prod < cons * POWER_MARGIN) {
             if (buildClick('btnFarmx10') || buildClick('btnMakeFarm')) {
-                console.log(`[AGENT] Solar Farm (perf=${perf}% prod=${prod} cons=${cons})`);
+                console.log(`[AGENT] Solar Farm (deficit prod=${prod} cons=${cons})`);
             }
-            return;
+            return;   // never add load while underpowered
         }
-        // 2a) Baseline solar so the first consumers always have headroom.
+
+        // 2) COLD-START baseline solar so the first consumers have headroom. Falls THROUGH
+        //    to consumers if a farm isn't affordable (don't block the cheap factory on it).
         if (farms < SOLAR_MIN && buildClick('btnMakeFarm')) {
             console.log(`[AGENT] Solar Farm baseline (${farms + 1}/${SOLAR_MIN})`);
             return;
         }
-        // 2b) Cheap battery storage as a hedge against power dips.
-        if (batteries < BATTERY_MIN && buildClick('btnMakeBattery')) {
-            console.log(`[AGENT] Battery Tower (${batteries + 1}/${BATTERY_MIN})`);
-            return;
-        }
-        // Everything past here ADDS power consumers — only do so while fully powered.
-        if (perf < 100) return;
 
-        // 3) DRONES toward target, kept at wire ≈ 1.618 × harvester. Single builds keep
-        //    the ratio tight; an imbalance over ~1.5× disorganizes the swarm (costs Yomi).
-        if (harv + wireD < DRONE_TARGET) {
+        // 3) CONSUMERS — the clip-producing core, built into spare power.
+        const wantFactory = factories < FACTORY_TARGET;
+        const wantDrone   = drones    < DRONE_TARGET;
+        const facProgress = FACTORY_TARGET ? factories / FACTORY_TARGET : 1;
+        const droProgress = DRONE_TARGET  ? drones    / DRONE_TARGET    : 1;
+
+        // Build a factory (200 MW) when it's proportionally behind drones and powered.
+        if (wantFactory && headroom >= 200 && (facProgress <= droProgress || !wantDrone)) {
+            if (buildClick('btnMakeFactory')) {
+                console.log(`[AGENT] Clip Factory (${factories + 1}/${FACTORY_TARGET}, headroom=${headroom}MW)`);
+                return;
+            }
+        }
+        // Build a drone (1 MW) into spare power, keeping wire ≈ 1.618 × harvester.
+        // Single builds keep the ratio tight; >1.5× imbalance disorganizes the swarm.
+        if (wantDrone && headroom >= 1) {
             if (wireD < harv * DRONE_RATIO) {
                 if (buildClick('btnMakeWireDrone')) {
                     console.log(`[AGENT] Wire Drone (harv=${harv} wire=${wireD})`);
@@ -456,10 +476,17 @@
             }
         }
 
-        // 4) FACTORIES toward target (each draws 200 MW; the performance gate above
-        //    guarantees we only add one while power is healthy).
-        if (factories < FACTORY_TARGET && buildClick('btnMakeFactory')) {
-            console.log(`[AGENT] Clip Factory (${factories + 1}/${FACTORY_TARGET})`);
+        // 4) Want more consumers but no power headroom → grow production (if affordable).
+        if ((wantFactory || wantDrone) && headroom < 200) {
+            if (buildClick('btnFarmx10') || buildClick('btnMakeFarm')) {
+                console.log(`[AGENT] Solar Farm (grow headroom, headroom=${headroom}MW)`);
+            }
+            return;
+        }
+
+        // 5) BATTERIES — cheap power hedge, lowest priority (only once consumers are maxed).
+        if (batteries < BATTERY_MIN && !wantFactory && !wantDrone && buildClick('btnMakeBattery')) {
+            console.log(`[AGENT] Battery Tower (${batteries + 1}/${BATTERY_MIN})`);
             return;
         }
     }
