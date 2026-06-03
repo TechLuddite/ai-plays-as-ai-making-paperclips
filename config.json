@@ -5,5 +5,9 @@
   "max_history": 6,
   "relay_url":   "http://localhost:5000",
   "ollama_url":  "http://localhost:11434/api/generate",
-  "log_file":    "agent.log"
+  "log_file":    "agent.log",
+
+  "_comment_trust": "Memory/processor allocation. memory_milestones = the ops-ceiling walls the agent rushes memory toward (memory x 1000 = ops cap), verified from the game wiki: 20=Stage1 cluster, 70=HypnoDrones, 120=Space Exploration, 175=OODA Loop, 250/300=Stage3 endgame. trust_proc_floor = minimum processors kept for ops regen before pouring trust into memory.",
+  "memory_milestones": [20, 70, 120, 175, 250, 300],
+  "trust_proc_floor":  5
 }

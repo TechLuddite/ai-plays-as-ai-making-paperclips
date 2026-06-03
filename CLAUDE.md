@@ -59,6 +59,11 @@ In `config.json` (edit here — no Python changes needed):
 - `loop_delay` — seconds between ticks (default: `2.0`)
 - `max_history` — rolling context window size (default: `6`)
 - `log_file` — tick log path (default: `agent.log`)
+- `memory_milestones` — memory walls the trust override rushes toward, memory × 1000 = ops
+  ceiling (default: `[20, 70, 120, 175, 250, 300]` — verified from the game wiki: HypnoDrones=70,
+  Space Exploration=120, OODA Loop=175, Stage 3 endgame=250/300)
+- `trust_proc_floor` — minimum processors kept for ops regen before pouring trust into memory
+  (default: `5`)
 
 In `bridge.user.js` (constants at top of file):
 - `STATE_MS` — state push interval in ms (default: `2000`)
@@ -72,20 +77,43 @@ In `bridge.user.js` (constants at top of file):
 Python restarts alone do NOT update the browser script.
 
 ## Current Status
-- Stage 1: working well
+- Stage 1: working well; trust allocation now follows the verified memory-wall ladder (v2.5),
+  so it drives toward the 70-memory HypnoDrones wall instead of stalling at processor parity
 - Stage 2: tournaments fully working (Yomi flowing, investment engine auto-upgrading to Level 3+);
-  all previously diagnosed bugs resolved in v2.3 (production starvation, domain output, project queue)
+  production starvation, domain output, project queue all resolved (v2.3); domain grading (v2.4)
 - Stage 3 (space exploration, probe design): actions are wired, strategy guidance still being refined
 - Best run: 13.5B+ clips, Stage 2, investment engine Level 3, Yomi accumulating, Marketing Level 20
 
 ## Known Issues
 
 ### ACTIVE — HIGH PRIORITY
-*(none — all high-priority issues resolved in v2.3)*
+*(none — processor over-allocation resolved in v2.5)*
 
 ### ACTIVE — LOW PRIORITY
 - **Xavier Re-initialization appears twice** in project list (game quirk or selector issue).
 - **start.ps1 display quirk**: relay + agent both in same terminal. Deferred.
+
+### RESOLVED IN v2.5
+- **Processor over-allocation — memory held back at the HypnoDrones wall** ✅ — observed live:
+  Memory 58 / Processors 57 (near-parity), stalled before the 70-memory HypnoDrones wall. The
+  old `check_trust_action()` capped processors at 10 only until memory reached 20, then used a
+  "memory ~2 ahead of processors" balance that grew them in lockstep — structurally pinning
+  memory near the processor count. Replaced with a STAGED MILESTONE LADDER using the game's
+  real memory walls (verified from wiki Memory.txt/Operations.txt; recorded in
+  memory/game_mechanics.md): `[20, 70, 120, 175, 250, 300]` = Stage 1 20k cluster, HypnoDrones,
+  Space Exploration, OODA Loop, Stage 3 endgame (Reject/Accept). Agent rushes memory to the
+  next unmet wall, soft-caps processors at ~half the target (wiki: ~35 procs for the 70 wall =
+  70 ÷ 2), keeps a processor floor of 5 for regen, and pours into processors once all walls are
+  cleared. New config.json tunables: `memory_milestones`, `trust_proc_floor`. Python-only — no
+  bridge.user.js change, no Tampermonkey redeploy. NOTE: the originally-planned data-driven
+  approach was dropped — `getProjects()` filters out greyed/unaffordable projects, so the wall
+  project (e.g. HypnoDrones) isn't even visible in `availableProjects`; the wiki-verified
+  constant ladder is simpler, needs no bridge change, and sees walls the project list hides.
+- **LLM misread Yomi vs upgrade cost** ✅ — the LLM wrote "Yomi=759,922 > upgrade cost 858,585"
+  when 759K < 858K (harmless — the `upgrade_investment` guard blocked it — but wrong in
+  thoughts/logs and about to matter as Yomi rose toward the cost). `format_state()` now
+  pre-computes the comparison on the OBS `yomi` line (`✓ ≥ upgrade cost … AVAILABLE` /
+  `✗ BELOW … (short by N)`); SYSTEM_PROMPT tells the LLM to trust that line, not eyeball it.
 
 ### RESOLVED IN v2.4
 - **AutoClipper buy rule wasted money once MegaClippers got cheaper** ✅ — the COST

@@ -4,6 +4,42 @@ All notable changes to this project are documented here.
 
 ---
 
+## [2.5] - 2026-06-03
+
+### Fixed
+- **Processor over-allocation — memory was being held back** (`agent.py`,
+  `check_trust_action()`) — observed live: Memory 58 / Processors 57 (near-parity), with
+  progression stalled at the 70-memory HypnoDrones wall. The old logic capped processors at
+  10 only until memory reached 20, then switched to a "memory ~2 ahead of processors" balance
+  that let processors climb in lockstep with memory — structurally pinning memory near the
+  processor count. But the game needs memory FAR ahead. Replaced with a STAGED MILESTONE
+  LADDER driven by the game's actual memory walls (verified from the wiki):
+  - `MEMORY_MILESTONES = [20, 70, 120, 175, 250, 300]` — 20 (Stage 1 20k-ops cluster),
+    70 (HypnoDrones, ends Stage 1), 120 (Space Exploration → Stage 3), 175 (OODA Loop),
+    250/300 (Stage 3 endgame, Reject/Accept paths).
+  - The agent rushes memory to the next unmet wall, soft-capping processors at ~half the
+    target (wiki: ~33–35 processors for the 70 wall → 70 ÷ 2 = 35). When processors are at/
+    over that cap, every trust point goes to memory. A small processor floor (5) is kept so
+    ops can still regenerate. Once all walls are cleared, remaining trust goes to processors.
+  - New `config.json` tunables: `memory_milestones`, `trust_proc_floor`.
+  - Python-only change — no `bridge.user.js` change, no Tampermonkey redeploy.
+- **LLM misread of Yomi vs upgrade cost** (`agent.py`) — the LLM repeatedly wrote
+  "Yomi=759,922 > upgrade cost 858,585" when 759K is BELOW 858K (harmless because the
+  `upgrade_investment` guard blocks it, but inaccurate in thoughts/logs and about to matter
+  as Yomi climbed toward the cost). `format_state()` now pre-computes the comparison on the
+  OBS `yomi` line: "✓ ≥ upgrade cost … AVAILABLE" or "✗ BELOW upgrade cost … (short by N)".
+  SYSTEM_PROMPT now tells the LLM to trust that line instead of eyeballing the math.
+
+### Reference
+- Recorded the authoritative memory-wall ladder (wiki Memory.txt / Operations.txt) into
+  `memory/game_mechanics.md` as ground truth for trust allocation.
+
+### Still active
+- **Xavier Re-initialization appears twice** in the project list (game quirk).
+- **start.ps1 display quirk** — relay and agent share a terminal window.
+
+---
+
 ## [2.4] - 2026-06-02
 
 ### Added

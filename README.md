@@ -188,6 +188,8 @@ Common settings live in `config.json` — edit and restart the agent to apply, n
 | `loop_delay` | `2.0` | Seconds between agent ticks |
 | `max_history` | `6` | Past actions included in each prompt |
 | `log_file` | `agent.log` | JSON-lines tick log path (gitignored) |
+| `memory_milestones` | `[20, 70, 120, 175, 250, 300]` | Memory walls the agent rushes toward (memory × 1000 = ops ceiling); from the game wiki |
+| `trust_proc_floor` | `5` | Minimum processors kept for ops regen before pouring trust into memory |
 
 Browser-side constants are at the top of `bridge.user.js`:
 
@@ -242,7 +244,11 @@ Browser-side constants are at the top of `bridge.user.js`:
 - The LLM occasionally produces invalid actions; these are caught and substituted with `wait`.
 - If Ollama is slow to respond, the agent falls back to `wait` for that tick.
 
-**Resolved in v2.0 – v2.4:**
+**Resolved in v2.0 – v2.5:**
+- Processor over-allocation / memory stall ✅ — trust allocation now follows the game's real
+  memory walls (20 / 70 / 120 / 175 / 250–300), rushing memory to the next wall and
+  soft-capping processors at ~half the target, instead of growing them in lockstep
+- LLM Yomi-vs-upgrade-cost misread ✅ — the observation line now pre-computes the comparison
 - AutoClipper cost-crossover money waste ✅ — fast rule now skips AutoClippers when a
   MegaClipper is cheaper (it had been buying $35.9B AutoClippers over $7.0B MegaClippers),
   plus an inventory/demand guard
@@ -326,7 +332,22 @@ It's a work in progress. But it works.
 
 ## Version History
 
-**v2.4 (current)**
+**v2.5 (current)**
+
+Computational-resource strategy rewrite, grounded in the game's actual memory walls.
+
+Key changes:
+- **Staged memory milestone ladder** — the old trust-allocation rule grew processors in
+  near-lockstep with memory (observed: Memory 58 / Processors 57), stalling progress at the
+  70-memory HypnoDrones wall. The agent now rushes memory to the next *verified* game wall —
+  `[20, 70, 120, 175, 250, 300]` (HypnoDrones, Space Exploration, OODA Loop, Stage 3 endgame)
+  — while soft-capping processors at ~half the target (the wiki advises ~35 processors for the
+  70 wall). Tunable via `config.json` (`memory_milestones`, `trust_proc_floor`). No redeploy.
+- **Yomi-vs-cost readout** — the LLM had been misreading whether it could afford an investment
+  upgrade ("Yomi > cost" when it was below). The observation line now states it outright
+  (`✓ ≥ upgrade cost … AVAILABLE` / `✗ BELOW … (short by N)`), so thoughts and logs stay honest.
+
+**v2.4**
 
 Observability and efficiency pass. The LLM now grades the domains it doesn't control, and a
 long-standing money-waste in the clipper-buying logic is closed.
@@ -419,10 +440,11 @@ Key changes:
 
 ## Where do we go from here?
 
-v2.4 added LLM domain grading and closed the AutoClipper cost-crossover waste. Combined with
-the v2.3 production-starvation fix, honest dashboard domain coverage, and the complete Stage 2
-project queue, the project is in a stable state for extended Stage 2 runs — and now reports the
-health of every domain, even the ones it doesn't directly control.
+v2.5 rebuilt the trust-allocation strategy around the game's verified memory walls, clearing
+the processor over-allocation that was stalling progress at HypnoDrones. Combined with v2.4's
+domain grading, the v2.3 production-starvation fix, honest dashboard coverage, and the complete
+Stage 2 project queue, the project runs unattended through the Stage 1 → Stage 2 transition and
+reports the health of every domain it touches.
 
 **Next architectural direction:**
 - **LLM parameter hints** — the `Status:` line already reserves a colon separator

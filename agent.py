@@ -103,6 +103,9 @@ YOUR JOB — work through this priority list each tick:
    tournaments — Yomi is only spent on upgrade_investment and increase_probe_trust.
    AutoTourney is kept ON by a hard override — you do NOT need to toggle it.
    Your only job here: upgrade_investment when yomi >= investUpgradeCost.
+   IMPORTANT: do NOT eyeball that comparison yourself — the OBS 'yomi' line states it
+   directly: "✓ ≥ upgrade cost … AVAILABLE" means you can upgrade; "✗ BELOW upgrade
+   cost … (short by N)" means you cannot. Trust that line, not a mental calculation.
    (Strategy selection and AutoTourney toggling are handled by override — you never
    need to choose set_strategy_random or toggle_auto_tourney.)
 
@@ -337,6 +340,17 @@ def format_state(state):
         if k == 'memory':
             ops_cap = int(fv) * 1000 if fv > 0 else 0
             flag = f" (ops cap: {ops_cap:,})"
+        if k == 'yomi':
+            # Pre-compute the yomi vs upgrade-cost comparison so the LLM stops
+            # misreading it (it was claiming "yomi > cost" when yomi was below).
+            upgrade_cost = safe_float(state.get('investUpgradeCost'), -1)
+            if upgrade_cost > 0:
+                if fv >= upgrade_cost:
+                    flag = f" ✓ ≥ upgrade cost {int(upgrade_cost):,} — upgrade_investment AVAILABLE"
+                else:
+                    short_by = int(upgrade_cost - fv)
+                    flag = (f" ✗ BELOW upgrade cost {int(upgrade_cost):,} "
+                            f"(short by {short_by:,}) — cannot upgrade yet")
         if k == 'portValue' and fv > 0:
             flag = " ← grow via invest_deposit / upgrade_investment"
         if k == 'drifters' and fv > 0:
@@ -348,46 +362,70 @@ def format_state(state):
 
 def check_trust_action(state):
     """
-    Auto-balance processors and memory.
+    Auto-balance processors and memory using the game's known memory walls.
 
-    Early-game cap: hold processors at ≤ PROC_CAP until memory hits MEM_UNLOCK.
-    Memory determines the ops ceiling (mem × 1000). Critical projects need
-    10,000–20,000 ops (Quantum Computing, Algorithmic Trading, Photonic Chip).
-    Rushing processors before the cap is high enough means fast regen against a
-    low ceiling — trust points that could raise the ceiling are wasted instead.
+    Memory sets the OPERATIONS CEILING (ops cap = memory × 1000); processors set
+    the ops REGEN rate (and creativity). Progress is gated by MEMORY WALLS — you
+    cannot buy a project until your ops ceiling can hold its full cost. Those walls
+    are fixed game constants, verified from the wiki (see memory/game_mechanics.md):
 
-    Once memory ≥ MEM_UNLOCK, switch to normal balance: keep memory ~2 ahead
-    of processors for a healthy regen/capacity ratio.
+        20  → Stage 1 20k-ops cluster (Coherent Extrapolated Volition, the +20-trust
+              Male Pattern Baldness, GREEDY strategy, Photonic Chips)
+        70  → HypnoDrones (70,000 ops) — ends Stage 1
+        120 → Space Exploration (120,000 ops) — Stage 2 → Stage 3
+        175 → The OODA Loop (Stage 3)
+        250 → Stage 3 endgame, Reject path (300 on the Accept path)
+
+    Strategy: RUSH MEMORY to the next unmet wall, holding processors at a soft cap
+    of ~half the target (the wiki advises ~33–35 processors for the 70 wall, i.e.
+    70 ÷ 2). Capping processors near half keeps ops regenerating fast enough to fill
+    the rising ceiling without stealing the trust that memory needs to clear the wall.
+    Once every wall is cleared, the rest of the trust goes to processors.
+
+    Tunables live in config.json: `memory_milestones`, `trust_proc_floor`.
 
     Returns (action, reason) or (None, None).
     """
-    PROC_CAP      = 10   # max processors while memory is still building up
-    MEM_UNLOCK    = 20   # release cap once ops ceiling reaches 20,000
+    MILESTONES = _cfg.get("memory_milestones", [20, 70, 120, 175, 250, 300])
+    PROC_FLOOR = _cfg.get("trust_proc_floor", 5)   # min processors so ops can regen at all
 
     trust = safe_float(state.get('trust'), 0)
     proc  = safe_float(state.get('processors'), 0)
     mem   = safe_float(state.get('memory'), 0)
-    # available = unspent trust points (trust shown is total, proc+mem is spent)
+    # available = unspent trust points (trust shown is total; proc+mem is what's spent)
     available = trust - proc - mem
     if available < 1 or proc <= 0 or mem <= 0:
         return None, None
+    proc, mem = int(proc), int(mem)
 
-    # Early-game cap: force memory growth until the ops ceiling is large enough
-    # for all core Stage 2 projects (Quantum Computing, Algorithmic Trading, Photonic Chip).
-    if proc >= PROC_CAP and mem < MEM_UNLOCK:
-        return 'add_memory', (
-            f"proc cap ({int(proc)}/{PROC_CAP}) — building ops ceiling to "
-            f"{MEM_UNLOCK * 1000:,} (memory {int(mem)}/{MEM_UNLOCK})"
-        )
+    # Bootstrap: with too few processors, ops barely regenerate — top them up first.
+    if proc < PROC_FLOOR:
+        return 'add_processor', f"bootstrap ops regen (processors {proc}/{PROC_FLOOR})"
 
-    # Normal balance: memory ~2 ahead of processors.
-    if mem < proc - 1:
-        return 'add_memory', f"memory ({int(mem)}) behind processors ({int(proc)}), expand cap"
-    if proc < mem - 3:
-        return 'add_processor', f"processors ({int(proc)}) too slow for memory cap ({int(mem)})"
-    if mem <= proc + 1:
-        return 'add_memory', f"expanding ops cap (mem={int(mem)}, proc={int(proc)})"
-    return 'add_processor', f"improving regen speed (mem={int(mem)}, proc={int(proc)})"
+    # Find the next memory wall we have NOT cleared yet.
+    target = next((m for m in MILESTONES if mem < m), None)
+
+    if target is None:
+        # Every memory wall cleared — remaining trust goes to regen / creativity.
+        return 'add_processor', f"all memory walls cleared (mem={mem}) — building ops regen"
+
+    # Processors are soft-capped at ~half the current memory target
+    # (wiki: ~33–35 processors for the 70-memory HypnoDrones wall → 70 ÷ 2 = 35).
+    proc_cap = max(PROC_FLOOR, round(target / 2))
+
+    if proc >= proc_cap:
+        # Processors already meet this stage's need — pour everything into memory.
+        # (This is the over-allocation fix: when processors are at/over the cap we
+        #  stop adding them and drive memory to the wall instead.)
+        return 'add_memory', (f"rush memory to {target} for next project wall "
+                              f"(mem={mem}; processors at soft cap {proc_cap})")
+
+    # Below the soft cap: keep memory in the lead, let processors trail at ~half so
+    # ops still regenerate fast enough to fill the rising ceiling.
+    if proc * 2 < mem:
+        return 'add_processor', (f"processors trailing (proc={proc}, mem={mem}) — "
+                                f"topping up regen toward soft cap {proc_cap}")
+    return 'add_memory', f"rush memory to {target} for next project wall (mem={mem}, proc={proc})"
 
 def is_emergency(state):
     wire       = safe_float(state.get('wire'),  fallback=999.0)
