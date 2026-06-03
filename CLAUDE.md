@@ -94,10 +94,12 @@ Python restarts alone do NOT update the browser script.
 ## Known Issues
 
 ### ACTIVE — HIGH PRIORITY
-- **Stage 2 memory growth / Swarm Gifts unhandled** (`agent.py` + `bridge.user.js`) — in Stage 2,
-  memory/processors come from SWARM GIFTS (generated when drones "think"), not Trust. The agent
-  has no code for this: the Work/Think slider (`#slider`, range 0–200) sits at 0 (all Work), so
-  no gifts generate ("Next gift in Infinity hours") and memory is frozen at 77. That blocks the
+- **Stage 2 Swarm Gifts unhandled — agent isn't spending them (Swarm Gifts ARE the Stage 2
+  "Trust")** (`agent.py` + `bridge.user.js`) — in Stage 2, memory/processors come from SWARM
+  GIFTS (generated when drones "think"), exactly as Trust funded them in Stage 1. The agent has
+  no code for either side: it does NOT spend the gifts it receives (observed live: 1 gift sitting
+  unspent), AND it doesn't generate them — the Work/Think slider (`#slider`, range 0–200) sits at
+  0 (all Work), so "Next gift in Infinity hours" and memory is frozen at 77. That blocks the
   ops-heavy Stage 2 upgrades (Upgraded/Hyperspeed Factories, Drone flocking — need memory 80–100)
   and Space Exploration (needs memory 120). FIX (two parts): (1) bridge — send `swarmGifts`,
   slider value, `swarmStatus`/`giftCountdown`; add a fast rule to set `#slider` toward Think
@@ -109,6 +111,16 @@ Python restarts alone do NOT update the browser script.
   Stage 2 progression blocker.
 
 ### ACTIVE — LOW PRIORITY
+- **LLM loops on `lower_price` in Stage 2 (Stage-1 wire/demand misread)** — observed live: the
+  LLM emits `lower_price` nearly every tick (result ✗ failed), thinking "wire critically low at
+  N inches, demand 498%, unsold high." In Stage 2 this is wrong: wire reads low/0 because drones
+  feed it to factories in real time (not an emergency), pricing is JS-handled, and clips SHOULD
+  accumulate. Harmless (the failed action does nothing, JS runs production) but wastes LLM
+  attention and clutters the log. FIX IDEAS: suppress Stage-1 pricing reasoning when in Stage 2
+  (e.g. don't surface `lower_price`/wire-emergency framing once `performance`/`portValue` present),
+  or guard `lower_price`/`raise_price` to no-op in Stage 2. Python/prompt-only, no redeploy.
+- **Dashboard needs further refinement** — the v2.8 stage-grouped layout is a first pass; owner
+  will scope specific dashboard changes in a later request. Placeholder until then.
 - **Xavier Re-initialization appears twice** in project list (game quirk or selector issue).
 - **start.ps1 display quirk**: relay + agent both in same terminal. Deferred.
 
