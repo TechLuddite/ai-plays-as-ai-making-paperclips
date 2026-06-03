@@ -216,9 +216,13 @@
         const opsM  = text.match(/([\d,]+)\s*ops/i);
         const crtM  = text.match(/([\d,]+)\s*creat/i);
         const trstM = text.match(/\(\s*(\d+)\s*Trust\s*\)/i);
+        const yomiM = text.match(/([\d,]+)\s*yomi/i);
         if (opsM)  return { type: 'ops',        amount: parseInt(opsM[1].replace(/,/g,'')) };
         if (crtM)  return { type: 'creativity',  amount: parseInt(crtM[1].replace(/,/g,'')) };
         if (trstM) return { type: 'trust',       amount: parseInt(trstM[1]) };
+        if (yomiM) return { type: 'yomi',        amount: parseInt(yomiM[1].replace(/,/g,'')) };
+        // NOTE: clip-cost projects (e.g. Self-correcting Supply Chain "1 sextillion clips")
+        // use word suffixes we don't parse yet — those won't auto-buy. See game_mechanics.md.
         return null;
     }
 
@@ -269,6 +273,18 @@
         'harvester drones',          // 25k ops — converts Available Matter → Acquired Matter
         'wire drones',               // 25k ops — converts Acquired Matter → Wire
         'clip factories',            // 35k ops — industrial-scale clip production
+        // Stage 2 production UPGRADES (huge multipliers — were missing, blocking progression)
+        'momentum',                  // 20k creat — Performance can exceed 100% (→1000%+). Buy ASAP.
+        'theory of mind',            // 25k creat — better tournament Yomi
+        'swarm computing',           // 36k yomi — unlocks Swarm Gifts (memory/processors source)
+        'upgraded factories',        // 80k ops — needs memory ≥ 80
+        'hyperspeed factories',      // 85k ops — needs memory ≥ 85
+        'collision avoidance',       // 80k ops — "Drone flocking: collision avoidance" (memory ≥ 80)
+        'flocking: alignment',       // 100k ops — "Drone flocking: alignment" (memory ≥ 100)
+        'adversarial cohesion',      // 50k yomi — "Drone Flocking: Adversarial Cohesion"
+        // (NOTE: Self-correcting Supply Chain costs CLIPS with a word suffix we can't parse —
+        //  it won't auto-buy yet. Space Exploration is intentionally NOT auto-bought: it ENDS
+        //  Stage 2 and should wait for memory ~120+ and a big battery bank — handle separately.)
         // creativity-cost
         'creativity',
         'neural net optimizer',
@@ -296,6 +312,7 @@
         const currentOps   = getNum('operations', 0);  // #operations is current ops only
         const currentCrt   = getNum('creativity');
         const currentTrust = parseInt(getText('trust') || '0');
+        const currentYomi  = getNum('yomiDisplay', 0);
 
         const btns = Array.from(
             document.querySelectorAll('#projectListTop button, #projectsDiv button')
@@ -309,7 +326,8 @@
                 const canAfford =
                     (cost.type === 'ops'        && currentOps   >= cost.amount) ||
                     (cost.type === 'creativity'  && currentCrt   >= cost.amount) ||
-                    (cost.type === 'trust'       && currentTrust >= cost.amount);
+                    (cost.type === 'trust'       && currentTrust >= cost.amount) ||
+                    (cost.type === 'yomi'        && currentYomi  >= cost.amount);
                 if (canAfford) {
                     btn.click();
                     lastProjectClick = Date.now();

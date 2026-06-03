@@ -4,6 +4,34 @@ All notable changes to this project are documented here.
 
 ---
 
+## [2.7.2] - 2026-06-03
+
+### Fixed
+- **Momentum (and other late-Stage-2 projects) never auto-purchased** (`bridge.user.js`) —
+  `PROJECT_PRIORITY` was missing the Stage 2 production upgrades, so `autoSpendOnProjects()`
+  couldn't see them. Most important: **Momentum** (20k creativity) lets Factory/Drone
+  Performance exceed 100% (up to ~1000%) — a huge Stage 2 accelerator — and it sat affordable
+  but unbought (676k creativity available). Added: Momentum, Theory of Mind, Swarm Computing,
+  Upgraded Factories, Hyperspeed Factories, Drone flocking (collision avoidance / alignment /
+  adversarial cohesion).
+- **Yomi-cost projects couldn't be auto-bought** (`bridge.user.js`) — `getProjectCost()` only
+  parsed ops/creativity/trust, so any yomi-priced project (Swarm Computing 36k yomi,
+  Adversarial Cohesion 50k yomi) returned `null` and was skipped. Added yomi parsing + a yomi
+  affordability check in `autoSpendOnProjects()`.
+  **Requires Tampermonkey redeploy.**
+
+### Known gaps surfaced (not yet fixed — see CLAUDE.md Known Issues)
+- **Stage 2 memory growth / Swarm Gifts unhandled** (HIGH) — in Stage 2 memory/processors come
+  from Swarm Gifts (drones "thinking"), not trust. The Work/Think slider sits at Work (0), so
+  no gifts generate and memory is frozen at 77 — blocking the ops-heavy upgrades (need 80–100)
+  and Space Exploration (needs 120). Next feature.
+- **Clip-cost projects** (e.g. Self-correcting Supply Chain "1 sextillion clips") use word
+  suffixes `getProjectCost()` can't parse — they won't auto-buy.
+- **Space Exploration** is intentionally NOT auto-bought (it ends Stage 2; needs deliberate
+  timing once memory ~120 and a battery bank are ready).
+
+---
+
 ## [2.7.1] - 2026-06-03
 
 ### Fixed

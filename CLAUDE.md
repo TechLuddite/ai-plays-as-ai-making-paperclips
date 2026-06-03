@@ -94,7 +94,19 @@ Python restarts alone do NOT update the browser script.
 ## Known Issues
 
 ### ACTIVE — HIGH PRIORITY
-*(none — processor over-allocation resolved in v2.5)*
+- **Stage 2 memory growth / Swarm Gifts unhandled** (`agent.py` + `bridge.user.js`) — in Stage 2,
+  memory/processors come from SWARM GIFTS (generated when drones "think"), not Trust. The agent
+  has no code for this: the Work/Think slider (`#slider`, range 0–200) sits at 0 (all Work), so
+  no gifts generate ("Next gift in Infinity hours") and memory is frozen at 77. That blocks the
+  ops-heavy Stage 2 upgrades (Upgraded/Hyperspeed Factories, Drone flocking — need memory 80–100)
+  and Space Exploration (needs memory 120). FIX (two parts): (1) bridge — send `swarmGifts`,
+  slider value, `swarmStatus`/`giftCountdown`; add a fast rule to set `#slider` toward Think
+  (wiki: 50–70% Think) to generate gifts. (2) agent — spend gifts via the EXISTING
+  `btnAddMem`/`btnAddProc` buttons (same as trust); `check_trust_action()` already knows the
+  memory milestone ladder (→120) but bails when trust=0 — make it use `swarmGifts` as the
+  spendable currency in Stage 2. STRATEGY NOTE: Work/Think is a tradeoff (Work=production,
+  Think=gifts); needs a balance choice. Tampermonkey redeploy required. This is the current
+  Stage 2 progression blocker.
 
 ### ACTIVE — LOW PRIORITY
 - **Xavier Re-initialization appears twice** in project list (game quirk or selector issue).
