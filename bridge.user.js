@@ -17,6 +17,22 @@
     const STATE_MS  = 2000;
     const ACTION_MS = 500;
 
+    // ── Stage 2 manufacturing / power tuning (edit to change build behavior) ─────
+    // Stage 2 is a power-management game: drones (1 MW each) and factories (200 MW each)
+    // CONSUME power; solar farms (+50 MW each) PRODUCE it. Everything is paid in CLIPS,
+    // and the game disables each build button when you can't afford it — so the builder
+    // just works toward these targets as clips allow, always keeping power ahead of
+    // consumption (the wiki warns: stay at 100% power or production stalls).
+    // Raise these later for the Stage 2 endgame (the wiki's "Quickening": ~200 factories,
+    // hundreds of thousands of drones, 10M MW-seconds of storage for Space Exploration).
+    const STAGE2_MS      = 800;    // how often the Stage 2 builder acts (ms)
+    const POWER_MARGIN   = 1.10;   // keep power production >= consumption × this
+    const SOLAR_MIN      = 30;     // baseline solar farms to build early (wiki: ~30)
+    const BATTERY_MIN    = 20;     // baseline battery towers (cheap power hedge)
+    const DRONE_TARGET   = 500;    // total drones to build (wiki: "leave drones at 500")
+    const DRONE_RATIO    = 1.618;  // wire drones ÷ harvester drones (golden ratio; >1.5 imbalance breaks the swarm)
+    const FACTORY_TARGET = 10;     // clip factories to build (wiki: 10 unlocks Upgraded Factories)
+
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     function getText(id) {
@@ -103,11 +119,41 @@
         };
     }
 
+    // ── Stage 2 state (Power + Manufacturing) ──────────────────────────────────
+    // Appears once Power Grid / the manufacturing projects unlock (powerDiv / factoryDiv
+    // visible). Drones harvest matter → wire → clips, all powered by Solar Farms.
+    // Everything here is paid in clips. Returns {} until the domain unlocks.
+
+    function getStage2State() {
+        if (!isVisible('powerDiv') && !isVisible('factoryDiv')) return {};
+        return {
+            performance:      getText('performance'),          // Factory/Drone Performance %
+            powerProduction:  getText('powerProductionRate'),  // MW produced (solar)
+            powerConsumption: getText('powerConsumptionRate'), // MW consumed (drones+factories)
+            farmLevel:        getText('farmLevel'),
+            farmCost:         getText('farmCost'),
+            batteryLevel:     getText('batteryLevel'),
+            batteryCost:      getText('batteryCost'),
+            storedPower:      getText('storedPower'),
+            maxStorage:       getText('maxStorage'),
+            factoryLevel:     getText('factoryLevelDisplay'),
+            factoryCost:      getText('factoryCostDisplay'),
+            harvesterLevel:   getText('harvesterLevelDisplay'),
+            harvesterCost:    getText('harvesterCostDisplay'),
+            wireDroneLevel:   getText('wireDroneLevelDisplay'),
+            wireDroneCost:    getText('wireDroneCostDisplay'),
+            availableMatter:  getText('availableMatterDisplay'),
+            acquiredMatter:   getText('acquiredMatterDisplay'),
+            nanoWire:         getText('nanoWire'),
+        };
+    }
+
     // ── State extraction ──────────────────────────────────────────────────────
 
     function getState() {
         const wire   = getWire();
         const invest = getInvestmentState();
+        const s2     = getStage2State();
         const p3     = getPhase3State();
 
         return Object.assign({
@@ -139,7 +185,7 @@
             // Strategic Modeling / AutoTourney state (null when not yet unlocked)
             autoTourneyOn:     isVisible('strategyEngine') ? getText('autoTourneyStatus') : null,
             stratPicker:       isVisible('strategyEngine') ? (document.getElementById('stratPicker')?.value || null) : null,
-        }, invest, p3);
+        }, invest, s2, p3);
     }
 
     function getPhase() {
@@ -337,6 +383,84 @@
                 lastMegaClipperClick = Date.now();
                 console.log(`[AGENT] MegaClipper bought (funds=$${funds.toFixed(0)}, unsold=${unsold}, demand=${demand}%)`);
             }
+        }
+    }
+
+    // ── Auto-build Stage 2 manufacturing (Power + Drones + Factories) ───────────
+    // Stage 2 is a power-management game. We build toward the targets at the top of the
+    // file, paying in clips. The game DISABLES a build button when you can't afford it,
+    // so gating on `!btn.disabled` makes overspending impossible and self-paces against
+    // the exponentially rising costs. Order of priority each tick:
+    //   1. POWER FIRST — chase solar farms so Factory/Drone Performance stays ≥ 100%
+    //   2. baseline solar + cheap battery storage
+    //   3. drones toward target, kept at the golden-ratio mix (wire ≈ 1.618 × harvester)
+    //   4. clip factories toward target (only added while fully powered)
+    let lastStage2Click = 0;
+
+    // Click a build button only if it exists, is visible, and is affordable (!disabled).
+    function buildClick(id) {
+        const b = document.getElementById(id);
+        if (b && b.offsetParent !== null && !b.disabled) {
+            b.click();
+            lastStage2Click = Date.now();
+            return true;
+        }
+        return false;
+    }
+
+    function autoStage2Manufacturing() {
+        if (!isVisible('powerDiv')) return;                       // domain not unlocked yet
+        if (Date.now() - lastStage2Click < STAGE2_MS) return;     // rate limit
+
+        const perf      = getNum('performance', 100);
+        const prod      = getNum('powerProductionRate', 0);
+        const cons      = getNum('powerConsumptionRate', 0);
+        const farms     = getNum('farmLevel', 0);
+        const batteries = getNum('batteryLevel', 0);
+        const factories = getNum('factoryLevelDisplay', 0);
+        const harv      = getNum('harvesterLevelDisplay', 0);
+        const wireD     = getNum('wireDroneLevelDisplay', 0);
+
+        // 1) POWER FIRST: keep production ahead so performance never drops below 100%.
+        //    Use the +10 button to catch up fast, falling back to a single farm.
+        if (perf < 100 || (cons > 0 && prod < cons * POWER_MARGIN)) {
+            if (buildClick('btnFarmx10') || buildClick('btnMakeFarm')) {
+                console.log(`[AGENT] Solar Farm (perf=${perf}% prod=${prod} cons=${cons})`);
+            }
+            return;
+        }
+        // 2a) Baseline solar so the first consumers always have headroom.
+        if (farms < SOLAR_MIN && buildClick('btnMakeFarm')) {
+            console.log(`[AGENT] Solar Farm baseline (${farms + 1}/${SOLAR_MIN})`);
+            return;
+        }
+        // 2b) Cheap battery storage as a hedge against power dips.
+        if (batteries < BATTERY_MIN && buildClick('btnMakeBattery')) {
+            console.log(`[AGENT] Battery Tower (${batteries + 1}/${BATTERY_MIN})`);
+            return;
+        }
+        // Everything past here ADDS power consumers — only do so while fully powered.
+        if (perf < 100) return;
+
+        // 3) DRONES toward target, kept at wire ≈ 1.618 × harvester. Single builds keep
+        //    the ratio tight; an imbalance over ~1.5× disorganizes the swarm (costs Yomi).
+        if (harv + wireD < DRONE_TARGET) {
+            if (wireD < harv * DRONE_RATIO) {
+                if (buildClick('btnMakeWireDrone')) {
+                    console.log(`[AGENT] Wire Drone (harv=${harv} wire=${wireD})`);
+                    return;
+                }
+            } else if (buildClick('btnMakeHarvester')) {
+                console.log(`[AGENT] Harvester Drone (harv=${harv} wire=${wireD})`);
+                return;
+            }
+        }
+
+        // 4) FACTORIES toward target (each draws 200 MW; the performance gate above
+        //    guarantees we only add one while power is healthy).
+        if (factories < FACTORY_TARGET && buildClick('btnMakeFactory')) {
+            console.log(`[AGENT] Clip Factory (${factories + 1}/${FACTORY_TARGET})`);
+            return;
         }
     }
 
@@ -798,6 +922,7 @@
         setInterval(autoRunTournament,   500);
         setInterval(autoMarketing,       1000);
         setInterval(autoMegaClippers,    1000);
+        setInterval(autoStage2Manufacturing, STAGE2_MS);   // Power + drones + factories
         setInterval(pollAction,          ACTION_MS);
 
         // Combined state push + badge update on the same interval

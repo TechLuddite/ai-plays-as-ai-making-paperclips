@@ -45,6 +45,9 @@ Flask Relay → browser polls GET /action (includes thought) → executes click
 - Project priority queue, emergency wire recovery
 - Tournament strategy enforcement (stratPicker='0' enforced every 50ms)
 - Auto-run tournaments when ops ≥ 90% cap (`autoRunTournament`, 500ms interval)
+- Stage 2 power & manufacturing (`autoStage2Manufacturing`, 800ms) — builds Solar Farms,
+  Battery Towers, Harvester/Wire Drones, Clip Factories from the clip surplus; power-first
+  (keeps performance 100%), golden-ratio drones, affordability gated on `!btn.disabled`
 
 **LLM Agent (ReAct loop — every 2 seconds):**
 - Strategic decisions across ALL visible game domains every tick
@@ -68,6 +71,9 @@ In `config.json` (edit here — no Python changes needed):
 In `bridge.user.js` (constants at top of file):
 - `STATE_MS` — state push interval in ms (default: `2000`)
 - `ACTION_MS` — action poll interval in ms (default: `500`)
+- Stage 2 manufacturing tunables: `STAGE2_MS` (800), `POWER_MARGIN` (1.10),
+  `SOLAR_MIN` (30), `BATTERY_MIN` (20), `DRONE_TARGET` (500), `DRONE_RATIO` (1.618),
+  `FACTORY_TARGET` (10) — early-Stage-2 defaults; raise targets for the endgame
 
 ## Deployment Checklist (run every time bridge.user.js changes)
 1. Copy bridge.user.js → Tampermonkey editor → Save  ← easy to forget; causes Yomi=0
@@ -80,7 +86,8 @@ Python restarts alone do NOT update the browser script.
 - Stage 1: working well; trust allocation now follows the verified memory-wall ladder (v2.5),
   so it drives toward the 70-memory HypnoDrones wall instead of stalling at processor parity
 - Stage 2: tournaments fully working (Yomi flowing, investment engine auto-upgrading to Level 3+);
-  production starvation, domain output, project queue all resolved (v2.3); domain grading (v2.4)
+  production starvation, domain output, project queue all resolved (v2.3); domain grading (v2.4);
+  Power & manufacturing engine (solar/batteries/drones/factories) auto-built (v2.7)
 - Stage 3 (space exploration, probe design): actions are wired, strategy guidance still being refined
 - Best run: 13.5B+ clips, Stage 2, investment engine Level 3, Yomi accumulating, Marketing Level 20
 
@@ -92,6 +99,21 @@ Python restarts alone do NOT update the browser script.
 ### ACTIVE — LOW PRIORITY
 - **Xavier Re-initialization appears twice** in project list (game quirk or selector issue).
 - **start.ps1 display quirk**: relay + agent both in same terminal. Deferred.
+
+### RESOLVED IN v2.7
+- **Stage 2 Power domain unhandled — agent was blind to it** ✅ — when Power Grid unlocked,
+  the new Power domain (Solar Farms, Battery Towers) plus the production units (Harvester/Wire
+  Drones, Clip Factories) had NO agent code, and the bridge sent 0 of those fields — so clip
+  production stayed frozen. Added: (1) `getStage2State()` in bridge sends the full domain;
+  (2) `autoStage2Manufacturing()` fast rule builds the engine from the clip surplus —
+  power-first (performance ≥ 100%), golden-ratio drones (wire ≈ 1.618× harvester), factories
+  to target, all gated on `!btn.disabled` (game disables unaffordable buttons → can't
+  overspend, self-paces against exponential costs); (3) `format_state()` shows the fields +
+  underpowered flag; SYSTEM_PROMPT folds it into the "Manufacturing" grade. Tunables = bridge
+  constants. Economics/DOM IDs verified from game source + wiki, in memory/game_mechanics.md.
+  REQUIRES Tampermonkey redeploy. FOLLOW-UP: defaults are early-Stage-2; raise DRONE_TARGET/
+  FACTORY_TARGET/storage for the endgame (Space Exploration needs 10M MW-sec batteries +
+  5 octillion clips). Validate live, then tune.
 
 ### RESOLVED IN v2.6
 - **Stage 2 hard-blocked by a project-name typo** ✅ (CRITICAL) — `bridge.user.js`
@@ -209,6 +231,19 @@ Python restarts alone do NOT update the browser script.
 - `btnInvest` (Deposit), `btnWithdraw`, `#investStrat` (low/med/hi select)
 - `investmentBankroll`, `secValue`, `portValue`, `btnImproveInvestments`
 - `#investUpgradeCost` — Yomi cost for next investment engine upgrade
+
+### Stage 2 Power & Manufacturing (v2.7 — paid in CLIPS; buttons disable when unaffordable):
+- Power: `powerDiv`, `performance` (Factory/Drone Performance %), `powerProductionRate`,
+  `powerConsumptionRate`. Solar Farm +50MW, Drone −1MW, Factory −200MW.
+- Solar Farm: `btnMakeFarm`/`btnFarmx10`/`btnFarmx100`, `farmLevel`, `farmCost`, `btnFarmReboot`
+- Battery: `btnMakeBattery`/`btnBatteryx10`/`btnBatteryx100`, `batteryLevel`, `batteryCost`,
+  `storedPower`/`maxStorage`
+- Clip Factory: `btnMakeFactory`, `factoryLevelDisplay`, `factoryCostDisplay`
+- Harvester Drone: `btnMakeHarvester`(+x10/x100/x1000), `harvesterLevelDisplay`, `harvesterCostDisplay`
+- Wire Drone: `btnMakeWireDrone`(+x10/x100/x1000), `wireDroneLevelDisplay`, `wireDroneCostDisplay`
+- Matter/wire: `availableMatterDisplay`, `acquiredMatterDisplay`, `nanoWire`
+- Drone ratio: wire ≈ 1.618× harvester; >1.5× imbalance costs 5k yomi to resync.
+  See memory/game_mechanics.md "Stage 2 Power & Manufacturing" for full economics.
 
 ### Other:
 - Quantum Computing: `btnQcompute`, `compDiv`, `qCompDisplay`

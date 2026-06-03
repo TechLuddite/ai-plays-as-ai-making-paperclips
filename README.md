@@ -71,6 +71,8 @@ The system splits work between two layers to avoid burning LLM inference time on
 - Price management (lower when oversupplied, raise when demand is high)
 - Buying Marketing upgrades automatically
 - Spending ops/creativity/trust on projects via a priority queue
+- Stage 2 power & manufacturing — building Solar Farms, Battery Towers, Harvester/Wire
+  Drones, and Clip Factories from the clip surplus, keeping power at 100%
 - Emergency wire recovery
 
 **LLM Agent (ReAct loop — every 2 seconds):**
@@ -197,6 +199,11 @@ Browser-side constants are at the top of `bridge.user.js`:
 |---------|---------|-------------|
 | `STATE_MS` | `2000` | How often state is pushed to relay (ms) |
 | `ACTION_MS` | `500` | How often the browser polls for actions (ms) |
+| `STAGE2_MS` | `800` | How often the Stage 2 power/manufacturing builder acts (ms) |
+| `POWER_MARGIN` | `1.10` | Keep power production ≥ consumption × this |
+| `SOLAR_MIN` / `BATTERY_MIN` | `30` / `20` | Baseline solar farms / battery towers to build early |
+| `DRONE_TARGET` / `DRONE_RATIO` | `500` / `1.618` | Total drones, and wire÷harvester golden ratio |
+| `FACTORY_TARGET` | `10` | Clip factories to build (raise for the Stage 2 endgame) |
 
 ---
 
@@ -244,7 +251,9 @@ Browser-side constants are at the top of `bridge.user.js`:
 - The LLM occasionally produces invalid actions; these are caught and substituted with `wait`.
 - If Ollama is slow to respond, the agent falls back to `wait` for that tick.
 
-**Resolved in v2.0 – v2.6:**
+**Resolved in v2.0 – v2.7:**
+- Stage 2 Power domain unhandled ✅ — the agent now sees and auto-builds the full power +
+  manufacturing engine (solar, batteries, drones, factories) instead of being blind to it
 - Stage 2 hard-blocked by a project-name typo ✅ — `Tóth Tubule Enfolding` was misspelled in
   the auto-buyer's priority list, so the whole manufacturing chain (and clip production) froze
 - Agent looping on an unavailable project ✅ — `buy_project` now falls back to `wait` when the
@@ -336,7 +345,24 @@ It's a work in progress. But it works.
 
 ## Version History
 
-**v2.6 (current)**
+**v2.7 (current)**
+
+Built the Stage 2 Power & Manufacturing engine — a whole game domain the agent couldn't see.
+
+Key changes:
+- **Power + production automation** — Stage 2 turns the game into a power-management sim
+  (drones and factories consume power; solar farms produce it). The agent had no code for
+  any of it and the bridge sent none of the fields, so the agent was blind and clip
+  production was frozen. Now the bridge reports the full domain, and a new fast rule builds
+  the engine from the clip surplus: Solar Farms (power first — keep performance at 100%),
+  Battery Towers, Harvester/Wire Drones (kept at the golden-ratio 1.618 mix), and Clip
+  Factories — all self-paced by the game's own affordability (it disables unaffordable build
+  buttons). Tunable via constants at the top of `bridge.user.js`. **Requires Tampermonkey
+  redeploy.**
+- **Agent visibility + grading** — the observation now shows performance/power/factory/drone
+  status (with an "underpowered" flag), folded into the LLM's "Manufacturing" health grade.
+
+**v2.6**
 
 Unblocked Stage 2 — a single misspelled project name had frozen the entire manufacturing chain.
 

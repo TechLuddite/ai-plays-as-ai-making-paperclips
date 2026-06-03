@@ -4,6 +4,41 @@ All notable changes to this project are documented here.
 
 ---
 
+## [2.7] - 2026-06-03
+
+### Added
+- **Stage 2 Power & Manufacturing engine** (`bridge.user.js`, `agent.py`) — the agent had
+  no code for the Power domain (Solar Farms, Battery Towers) or the Stage 2 production units
+  (Harvester Drones, Wire Drones, Clip Factories). The bridge sent 0 of these fields, so the
+  agent was blind to the whole domain and clip production was frozen.
+  - **Bridge state extraction** — new `getStage2State()` sends `performance`,
+    `powerProduction`, `powerConsumption`, `farmLevel`/`farmCost`, `batteryLevel`/`batteryCost`,
+    `storedPower`/`maxStorage`, `factoryLevel`/`factoryCost`, `harvesterLevel`/`harvesterCost`,
+    `wireDroneLevel`/`wireDroneCost`, `availableMatter`, `acquiredMatter`, `nanoWire`.
+  - **Bridge fast rule** `autoStage2Manufacturing()` — builds the whole engine from the clip
+    surplus, in priority order: (1) power first — add Solar Farms whenever Factory/Drone
+    Performance < 100% or production < consumption × margin; (2) baseline solar + cheap
+    battery storage; (3) Harvester/Wire Drones toward a target, kept at the golden-ratio mix
+    (wire ≈ 1.618 × harvester, since >1.5× imbalance disorganizes the swarm); (4) Clip
+    Factories toward a target, only while fully powered. Affordability is gated on
+    `!btn.disabled` (the game disables unaffordable build buttons), which makes overspending
+    impossible and self-paces against the exponentially rising costs.
+  - **Tunables** — constants at the top of `bridge.user.js`: `STAGE2_MS`, `POWER_MARGIN`,
+    `SOLAR_MIN`, `BATTERY_MIN`, `DRONE_TARGET`, `DRONE_RATIO`, `FACTORY_TARGET`. Defaults are
+    conservative early-Stage-2 values (wiki-based); raise them for the endgame.
+  - **Agent visibility** — `format_state()` shows the power/manufacturing fields with an
+    "UNDERPOWERED" flag when performance < 100%; SYSTEM_PROMPT lists the engine as
+    JS-handled and folds it into the LLM's "Manufacturing" Status grade.
+  All facts (DOM IDs, power economics, costs, drone ratio) verified from the game HTML source
+  and the wiki Stages strategy doc; recorded in `memory/game_mechanics.md`.
+  **Requires Tampermonkey redeploy.**
+
+### Still active
+- **Xavier Re-initialization appears twice** in the project list (game quirk).
+- **start.ps1 display quirk** — relay and agent share a terminal window.
+
+---
+
 ## [2.6] - 2026-06-03
 
 ### Fixed

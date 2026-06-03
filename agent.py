@@ -91,6 +91,9 @@ WHAT THE AGENT HANDLES AUTOMATICALLY — never choose these:
   - AutoTourney toggling (toggle_auto_tourney) — kept ON by override
   - Tournament strategy selection (set_strategy_random) — set to RANDOM by override
     on first unlock; you never need to set it again
+  - Stage 2 manufacturing & power: Solar Farms, Battery Towers, Harvester Drones,
+    Wire Drones, Clip Factories — all auto-built by fast rules from the clip surplus,
+    keeping Factory/Drone Performance at 100%. You never build these; just grade them.
   - Emergency wire recovery
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -169,7 +172,9 @@ domain. Use exactly one short token per domain:
 
 What to look at for each domain (cite these signals in your Thought, not the Status line):
   Business      — demand %, unsold-inventory trend, clip price sanity
-  Manufacturing — wire level (1000+ healthy, <100 critical), clip rate not stalled
+  Manufacturing — Stage 1: wire level (1000+ healthy, <100 critical), clip rate not stalled.
+                  Stage 2: Factory/Drone Performance (100% = healthy, <100% = warn —
+                  underpowered), and whether powerConsumption exceeds powerProduction.
   CompRes       — operations vs ops cap, trust spent, creativity flowing
   QuantumComp   — Stage 2+ only; ops being generated (mark auto in Stage 1)
   StratModel    — Stage 2+ only; Yomi rising and AutoTourney ON (mark auto in Stage 1)
@@ -296,11 +301,15 @@ def format_state(state):
         # investments (Phase 2)
         'portValue', 'investBankroll', 'investStocks',
         'investStrategy', 'investLevel', 'investUpgradeCost',
+        # Stage 2 manufacturing / power (handled by JS fast rules — shown for visibility/grading)
+        'performance', 'powerProduction', 'powerConsumption',
+        'farmLevel', 'batteryLevel', 'factoryLevel',
+        'harvesterLevel', 'wireDroneLevel',
+        'availableMatter', 'nanoWire',
         # space (Phase 3)
         'colonized', 'probeTotal', 'probeTrust', 'drifters',
         'probeSpeed', 'probeNav', 'probeRep', 'probeHaz',
         'probeFac', 'probeHarv', 'probeWire', 'probeCombat',
-        'performance',
         'availableProjects',
     ]
     lines = []
@@ -353,6 +362,16 @@ def format_state(state):
                             f"(short by {short_by:,}) — cannot upgrade yet")
         if k == 'portValue' and fv > 0:
             flag = " ← grow via invest_deposit / upgrade_investment"
+        if k == 'performance' and fv >= 0:
+            # Factory/Drone Performance — Stage 2 power health (JS auto-builds solar farms).
+            if fv < 100:
+                flag = " ⚠ UNDERPOWERED — JS building solar farms (Manufacturing=warn)"
+            else:
+                flag = " ✓ fully powered"
+        if k == 'powerConsumption':
+            prod = safe_float(state.get('powerProduction'), -1)
+            if prod >= 0 and fv > prod:
+                flag = f" ⚠ consumption > production ({prod:.0f} MW) — JS adding solar"
         if k == 'drifters' and fv > 0:
             flag = " ⚠ UNDER ATTACK — consider raise_probe_combat"
         if k == 'colonized':
