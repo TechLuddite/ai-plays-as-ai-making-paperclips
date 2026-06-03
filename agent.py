@@ -151,6 +151,35 @@ PRICING NOTE:
     investment engine, not clip sales. Large unsold counts are correct in Stage 2.
   Wire: 1000+ inches is healthy.
 
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+DOMAIN STATUS GRADING (advisory only — you do NOT act on these):
+
+The fast rules run five domains automatically. You cannot take actions on those
+domains — your job here is only to WATCH them and report how healthy each looks.
+After all your Action lines, output ONE Status line that grades each auto-managed
+domain. Use exactly one short token per domain:
+
+  healthy  — fast rules are coping, no concern
+  warn     — something worth watching, not critical yet
+  critical — a real problem the fast rules are NOT catching
+  auto     — domain not active this phase, or nothing to judge this tick
+
+What to look at for each domain (cite these signals in your Thought, not the Status line):
+  Business      — demand %, unsold-inventory trend, clip price sanity
+  Manufacturing — wire level (1000+ healthy, <100 critical), clip rate not stalled
+  CompRes       — operations vs ops cap, trust spent, creativity flowing
+  QuantumComp   — Stage 2+ only; ops being generated (mark auto in Stage 1)
+  StratModel    — Stage 2+ only; Yomi rising and AutoTourney ON (mark auto in Stage 1)
+
+Rules for the Status line:
+  - It is the LAST line of your response, AFTER every Action line.
+  - Output exactly ONE Status line. Grade only domains active this phase; mark the
+    rest auto (e.g. QuantumComp and StratModel are auto until portValue appears).
+  - Token only — no prose, no numbers, no punctuation other than the commas
+    separating domains and the '=' before each token.
+  - This is purely advisory. A Status grade NEVER triggers an action — acting on
+    these domains is the fast rules' job, not yours. You only report what you see.
+
 {ACTIONS}
 
 MANDATORY RESPONSE FORMAT — one Thought, then one Action line per active game domain.
@@ -161,28 +190,34 @@ Output the action name ONLY — no domain labels, no brackets, no inline comment
   Action: <buy_project:Name  OR  nothing>     ← Projects — ALWAYS required
   Action: <upgrade_investment  OR  nothing>   ← Investments — add when portValue in state
   Action: <probe action  OR  nothing>         ← Probes — add when colonized in state
+  Status: Business=token, Manufacturing=token, CompRes=token, QuantumComp=token, StratModel=token
+                                              ← grades for auto domains — ALWAYS last line
 
 EXAMPLES — copy this exact style:
 
   Stage 1 (no investments yet):
     Thought: Operations 8,200/10,000. No affordable projects visible. Fast rules handling price.
     Action: nothing
+    Status: Business=healthy, Manufacturing=healthy, CompRes=healthy, QuantumComp=auto, StratModel=auto
 
   Stage 2 (portValue visible in state):
     Thought: Photonic Chip costs 11,000 ops, have 12,500. Yomi 320 > upgrade cost 100.
     Action: buy_project:Photonic Chip
     Action: upgrade_investment
+    Status: Business=healthy, Manufacturing=warn, CompRes=healthy, QuantumComp=healthy, StratModel=healthy
 
-  Stage 2 — nothing to do this tick:
-    Thought: No affordable projects. Yomi=0, upgrade costs 100. Overrides handling investments.
+  Stage 2 — nothing to do, but wire running low:
+    Thought: No affordable projects. Yomi=0, upgrade costs 100. Wire only 60 inches — fast rules slow.
     Action: nothing
     Action: nothing
+    Status: Business=healthy, Manufacturing=critical, CompRes=healthy, QuantumComp=healthy, StratModel=healthy
 
   Stage 3 (colonized visible, portValue visible):
     Thought: colonized=38%. Rep=2 critically low, stalling replication. Yomi=0, can't upgrade.
     Action: nothing
     Action: nothing
     Action: raise_probe_rep
+    Status: Business=auto, Manufacturing=healthy, CompRes=healthy, QuantumComp=healthy, StratModel=healthy
 
 RULES:
 1. Action name ONLY — no domain labels, no brackets, no inline comments.
@@ -195,6 +230,8 @@ RULES:
 4. Add the Probes Action line whenever colonized appears in the state.
 5. buy_project: write the exact project name after the colon — nothing else on that line.
 6. Pricing (raise_price / lower_price) is optional — only if fast rules are clearly stuck.
+7. The Status line is ALWAYS the LAST line. One token per domain (healthy/warn/
+   critical/auto). It grades auto domains only — it never causes an action.
 """
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -365,7 +402,7 @@ def ask_ollama(prompt):
             "prompt":  prompt,
             "system":  SYSTEM_PROMPT,
             "stream":  False,
-            "options": {"temperature": 0.2, "num_predict": 400}
+            "options": {"temperature": 0.2, "num_predict": 500}
         }, timeout=60)
         return r.json().get("response", "").strip()
     except Exception as e:
@@ -398,6 +435,61 @@ def parse_response(text):
             if a:
                 actions.append(a)
     return thought, actions or ["wait"]
+
+# Short tokens the LLM uses on the Status line → the full domain names that the
+# dashboard and domain_decisions list use.  Several aliases map to one domain so a
+# slightly-off LLM spelling still lands (e.g. "Quantum" → "Quantum Computing").
+_STATUS_DOMAIN_MAP = {
+    'business':      'Business',
+    'manufacturing': 'Manufacturing',
+    'compres':       'Computational Resources',
+    'comp':          'Computational Resources',
+    'quantumcomp':   'Quantum Computing',
+    'quantum':       'Quantum Computing',
+    'qc':            'Quantum Computing',
+    'stratmodel':    'Strategic Modeling',
+    'strat':         'Strategic Modeling',
+    'sm':            'Strategic Modeling',
+}
+
+# The only grade tokens we accept.  Anything else is ignored (no dashboard badge).
+_STATUS_GRADES = {'healthy', 'warn', 'critical', 'auto'}
+
+def parse_status(text):
+    """Return {full_domain_name: grade_token} parsed from the LLM's 'Status:' line.
+
+    The Status line is ADVISORY — the LLM grades the auto-managed (JS-handled)
+    domains without taking action on them.  Expected shape:
+
+        Status: Business=warn, Manufacturing=healthy, CompRes=healthy, ...
+
+    Future-proofing (requirement: keep the format extensible): a grade may one day
+    carry a parameter hint after a colon, e.g.  Manufacturing=warn:wire_threshold=200.
+    We deliberately keep only the grade token (the text before the first ':') for
+    now, so adding hint-parsing later will NOT require a format change.
+
+    Grading must never break the tick: a missing, empty, or malformed Status line
+    returns {} and the dashboard simply shows no badges.
+    """
+    status = {}
+    for line in text.splitlines():
+        line = line.strip()
+        if not line.lower().startswith("status:"):
+            continue
+        body = line[7:].strip()
+        # Each chunk looks like "Business=warn" (optionally "Business=warn:hint=...").
+        for chunk in body.split(','):
+            if '=' not in chunk:
+                continue
+            short, value = chunk.split('=', 1)
+            short = short.strip().lower()
+            # Drop any future ":hint" suffix; keep just the grade token for now.
+            grade = value.strip().split(':', 1)[0].strip().lower()
+            full = _STATUS_DOMAIN_MAP.get(short)
+            if full and grade in _STATUS_GRADES:
+                status[full] = grade
+        break  # only the first Status line is meaningful
+    return status
 
 def parse_action(action_str):
     if ":" in action_str:
@@ -654,6 +746,8 @@ def run():
             continue
 
         thought, action_strs = parse_response(raw)
+        # Advisory health grades for the auto-managed domains (may be empty).
+        status_map = parse_status(raw)
 
         # Guards applied to every LLM action — block override-managed and unaffordable actions
         invest_actions = {'invest_deposit', 'invest_withdraw', 'set_invest_low',
@@ -751,9 +845,12 @@ def run():
             active_domains.append("Investments")
         if state.get('colonized'):
             active_domains.append("Probes")
+        # LLM-owned domains carry their actual action and status=None (they are graded
+        # by their action, not by a health token).
         domain_decisions = [
             {"domain": active_domains[i] if i < len(active_domains) else f"Domain {i+1}",
-             "action": label}
+             "action": label,
+             "status": None}
             for i, label in enumerate(llm_display)
         ]
 
@@ -769,13 +866,16 @@ def run():
         for _dom in _ALL_DOMAINS:
             if _dom in _llm_domains:
                 continue
-            # Domains not yet unlocked get "n/a" (very dim) rather than "auto"
+            # Domains not yet unlocked get "n/a" (very dim) rather than "auto".
+            # Auto domains carry the LLM's advisory health grade (or None if it
+            # didn't grade them this tick) so the dashboard can show a status dot.
             if _dom in ("Quantum Computing", "Strategic Modeling", "Investments") and not _is_stage2:
-                domain_decisions.append({"domain": _dom, "action": "n/a"})
+                domain_decisions.append({"domain": _dom, "action": "n/a", "status": None})
             elif _dom == "Probes" and not _is_stage3:
-                domain_decisions.append({"domain": _dom, "action": "n/a"})
+                domain_decisions.append({"domain": _dom, "action": "n/a", "status": None})
             else:
-                domain_decisions.append({"domain": _dom, "action": "auto"})
+                domain_decisions.append({"domain": _dom, "action": "auto",
+                                         "status": status_map.get(_dom)})
 
         # Update per-domain loop tracker and build warnings for the NEXT tick's prompt.
         # We track the last 5 actions per domain and warn when the last 3 are identical.

@@ -4,6 +4,52 @@ All notable changes to this project are documented here.
 
 ---
 
+## [2.4] - 2026-06-02
+
+### Added
+- **LLM domain grading** (`agent.py`, `relay.py`) — the LLM now outputs one advisory
+  `Status:` line each tick, after all `Action:` lines, grading the health of the five
+  JS-handled (auto) domains it doesn't directly control:
+  `Status: Business=warn, Manufacturing=healthy, CompRes=healthy, QuantumComp=auto, StratModel=auto`
+  - Tokens: `healthy` (rules coping) / `warn` (worth watching) / `critical` (a problem
+    the rules aren't catching) / `auto` (domain not active this phase, or nothing to judge).
+  - New `parse_status()` in `agent.py` extracts the line into `{domain: grade}`. It is
+    graceful by design — a missing or malformed `Status:` line returns `{}` and never
+    raises, so grading can never break a tick. Short-name aliases (e.g. `Quantum` →
+    `Quantum Computing`) and unknown tokens are handled safely.
+  - `domain_decisions` entries gained an optional `status` field (the grade for auto
+    domains; `None` for LLM-owned domains, which are judged by their action instead).
+  - `relay.py` dashboard renders a small colored dot on each "auto" cell: dim green =
+    healthy, amber = warn, red = critical. The red dot is distinct from the red
+    "LLM Failed" *text* — the dot means the JS is running but the LLM flags a concern.
+    No status → no dot, just the dim gray "auto" as before.
+  - The `Status:` value format reserves a colon separator (`warn:wire_threshold=200`) for
+    a future parameter-hint extension — not implemented yet (see roadmap), but the format
+    won't have to change to add it.
+  - `num_predict` raised 400 → 500 to leave room for the extra line.
+  - **No `bridge.user.js` change** — grading is purely a Python/dashboard concern; no
+    Tampermonkey redeploy was required for this part.
+
+### Fixed
+- **AutoClipper buy rule wasted money once MegaClippers got cheaper** (`bridge.user.js`) —
+  the real issue was the COST CROSSOVER, not production volume. Observed live (Phase 2):
+  the next AutoClipper cost ~$35.9B while the next MegaClipper cost ~$7.0B — i.e. an
+  AutoClipper had become ~5× the price of a MegaClipper while producing far less. Root
+  cause: the AutoClipper rule in `runFastRules()` bought on raw affordability
+  (`wire > 1000 && spoolsAfter >= 3`) with NO comparison to `megaClipperCost` and NO
+  unsold/demand guard, so it would spend funds on the strictly-worse unit the moment cash
+  recovered (e.g. after an investment withdraw). Fix: added two guards mirroring
+  `autoMegaClippers()` — (1) skip AutoClippers when MegaClippers are unlocked AND
+  `clipperCost >= megaClipperCost` (let the cheaper/better Mega buy fire instead), and
+  (2) the same `unsold > 100 && demand < 400` backlog guard.
+  **Requires Tampermonkey redeploy** (copy bridge.user.js → editor → save → reload page).
+
+### Still active
+- **Xavier Re-initialization appears twice** in the project list (game quirk).
+- **start.ps1 display quirk** — relay and agent share a terminal window.
+
+---
+
 ## [2.3] - 2026-06-01
 
 ### Fixed

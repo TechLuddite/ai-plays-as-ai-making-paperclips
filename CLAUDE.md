@@ -87,6 +87,28 @@ Python restarts alone do NOT update the browser script.
 - **Xavier Re-initialization appears twice** in project list (game quirk or selector issue).
 - **start.ps1 display quirk**: relay + agent both in same terminal. Deferred.
 
+### RESOLVED IN v2.4
+- **AutoClipper buy rule wasted money once MegaClippers got cheaper** ✅ — the COST
+  CROSSOVER, not production, was the issue. Observed live (Phase 2): next AutoClipper
+  ~$35.9B vs next MegaClipper ~$7.0B — AutoClipper ~5× the price for far less output.
+  Root cause: the AutoClipper rule in `runFastRules()` bought on raw affordability
+  (`wire > 1000 && spoolsAfter >= 3`) with NO MegaClipper-cost comparison and NO
+  unsold/demand guard. Fix (in `bridge.user.js`): added two guards mirroring
+  `autoMegaClippers()` — (1) skip AutoClippers when MegaClippers are unlocked AND
+  `clipperCost >= megaClipperCost` (let the cheaper/better Mega buy fire instead),
+  and (2) the same `unsold > 100 && demand < 400` backlog guard. REQUIRES Tampermonkey
+  redeploy (bridge.user.js changed).
+- **LLM domain grading** ✅ — roadmap item 11. The LLM now outputs one advisory
+  `Status:` line each tick (after all `Action:` lines) grading the JS-handled domains:
+  `Status: Business=warn, Manufacturing=healthy, CompRes=healthy, QuantumComp=auto, StratModel=auto`.
+  Tokens: `healthy` / `warn` / `critical` / `auto`. `parse_status()` in agent.py extracts
+  it (graceful: missing/garbled → `{}`, never raises); `domain_decisions` entries gained an
+  optional `status` field; relay.py dashboard renders a colored dot on each "auto" cell
+  (dim green / amber / red — red dot ≠ red "LLM Failed" text). Grading is advisory only —
+  it never triggers an action. `num_predict` raised 400→500 for the extra line. The Status
+  value reserves a colon separator (`warn:wire_threshold=200`) for a future parameter-hint
+  extension — NOT implemented yet (see Next Steps 11-followup). No bridge.user.js change.
+
 ### RESOLVED IN v2.3
 - Production starvation ✅ — Fix A: wire-starvation emergency withdraw when WireBuyer ON but
   can't afford wire; Fix B: replaced broken marketing-cost trigger with wire-price-based min_cash
@@ -172,13 +194,13 @@ Python restarts alone do NOT update the browser script.
 8. ~~Production starvation fix~~ ✅ done in v2.3
 9. ~~Stage 2 manufacturing project queue~~ ✅ done in v2.3
 10. Fix start.ps1 display quirk
-11. **LLM domain grading** — LLM rates the health of JS-handled domains each tick
-    (e.g., "Manufacturing: warn", "Business: healthy"). Intended design:
-    - SYSTEM_PROMPT gains a "Domain Status" section; LLM outputs `Status: Domain=token` lines
-    - `parse_response()` gains a `parse_status()` sibling to extract these
-    - relay.py dashboard shows colored health badges alongside "auto" labels
-    - Longer term: LLM can output parameter hints (e.g., `wire_threshold=200`) that
-      agent.py reads and passes to the bridge as adjustments
+11. ~~LLM domain grading~~ ✅ done in v2.4 — `Status:` line + `parse_status()` +
+    dashboard status dots. See "RESOLVED IN v2.4" above.
+11b. **LLM parameter hints (follow-up to 11)** — the `Status:` value format already
+    reserves a colon separator (`Manufacturing=warn:wire_threshold=200`). Next: have
+    `parse_status()` keep the post-colon hint, expose it on `domain_decisions`, and
+    pass it to the bridge as a tunable (new action or config push). Bridge change +
+    Tampermonkey redeploy required for this one. NOT done yet.
 12. **LLM domain output Fix B** — expand SYSTEM_PROMPT to all 7 domains with explicit Action
     lines (num_predict 400→700+); test qwen2.5 compliance before enabling
 13. Multi-model competition mode

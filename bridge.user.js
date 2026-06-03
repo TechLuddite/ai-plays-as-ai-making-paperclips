@@ -434,10 +434,26 @@
             clickBtn('btnMakePaperclip');
         }
 
-        const spoolsAfter = Math.floor((funds - clipperCost) / wireCost);
-        if (wire > 1000 && spoolsAfter >= 3) {
+        // ── Auto-buy AutoClippers (with cost-crossover + inventory guards) ─────
+        // Two guards mirror the MegaClipper rule so we never spend on the worse buy:
+        //
+        // 1. Cost crossover: once MegaClippers are unlocked, the AutoClipper price
+        //    eventually grows past the MegaClipper price. At that point an AutoClipper
+        //    costs MORE for FAR LESS production — a strictly worse deal. So if Megas
+        //    are available and an AutoClipper is no longer cheaper than a MegaClipper,
+        //    skip and let autoMegaClippers() spend the cash instead.
+        // 2. Inventory/demand: if we already have a big unsold backlog and demand is
+        //    well below the ceiling, more production capacity just deepens the backlog.
+        const megaUnlocked = isVisible('megaClipperDiv');
+        const megaCost     = getNum('megaClipperCost', Infinity);
+        const spoolsAfter  = Math.floor((funds - clipperCost) / wireCost);
+
+        const megaIsBetterDeal = megaUnlocked && clipperCost >= megaCost;  // guard 1
+        const backlogTooDeep   = unsold > 100 && demand < 400;             // guard 2
+
+        if (wire > 1000 && spoolsAfter >= 3 && !megaIsBetterDeal && !backlogTooDeep) {
             if (clickBtn('btnMakeClipper')) {
-                console.log(`[AGENT] AutoClipper bought (wire=${wire}, buffer=${spoolsAfter})`);
+                console.log(`[AGENT] AutoClipper bought (wire=${wire}, buffer=${spoolsAfter}, cost=$${clipperCost.toFixed(0)} < mega=$${megaCost.toFixed(0)})`);
             }
         }
 

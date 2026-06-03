@@ -66,7 +66,8 @@ The system splits work between two layers to avoid burning LLM inference time on
 **Userscript (fast, rule-based — 20x/second):**
 - Clicking Make Paperclip in early game
 - Buying wire when stock is low
-- Buying AutoClippers and MegaClippers when funds allow
+- Buying AutoClippers and MegaClippers when funds allow (prefers whichever is the
+  better deal — skips AutoClippers once MegaClippers are cheaper per unit)
 - Price management (lower when oversupplied, raise when demand is high)
 - Buying Marketing upgrades automatically
 - Spending ops/creativity/trust on projects via a priority queue
@@ -241,7 +242,12 @@ Browser-side constants are at the top of `bridge.user.js`:
 - The LLM occasionally produces invalid actions; these are caught and substituted with `wait`.
 - If Ollama is slow to respond, the agent falls back to `wait` for that tick.
 
-**Resolved in v2.0 – v2.3:**
+**Resolved in v2.0 – v2.4:**
+- AutoClipper cost-crossover money waste ✅ — fast rule now skips AutoClippers when a
+  MegaClipper is cheaper (it had been buying $35.9B AutoClippers over $7.0B MegaClippers),
+  plus an inventory/demand guard
+- Domain observability gap ✅ — the LLM now grades the five JS-handled domains each tick via
+  an advisory `Status:` line; dashboard shows health dots on the "auto" cells
 - Production starvation at high marketing levels ✅ — wire-price-based cash buffer replaces
   the broken marketing-cost trigger; wire-starvation emergency override added for WireBuyer
 - Dashboard "LLM Failed" for JS-handled domains ✅ — `domain_decisions` now covers all 8
@@ -320,7 +326,26 @@ It's a work in progress. But it works.
 
 ## Version History
 
-**v2.3 (current)**
+**v2.4 (current)**
+
+Observability and efficiency pass. The LLM now grades the domains it doesn't control, and a
+long-standing money-waste in the clipper-buying logic is closed.
+
+Key changes:
+- **LLM domain grading** — the LLM outputs one advisory `Status:` line per tick grading the
+  five JS-handled domains (`healthy` / `warn` / `critical` / `auto`). It does **not** take
+  over those domains — the fast rules still run them — it just reports their health so we
+  finally have eyes on the parts the LLM doesn't directly touch. The dashboard shows a small
+  colored dot on each "auto" cell (dim green / amber / red). Missing or malformed grades fail
+  safe (no dot, no error). Purely a Python/dashboard change — no Tampermonkey redeploy.
+- **AutoClipper cost-crossover fix** — once MegaClippers are unlocked, the next AutoClipper
+  can cost several times more than the next MegaClipper while producing far less (observed
+  live: ~$35.9B AutoClipper vs ~$7.0B MegaClipper). The fast rule was buying AutoClippers on
+  raw affordability with no cost comparison. It now skips AutoClippers when a MegaClipper is
+  the cheaper deal, and adds the same inventory/demand guard the MegaClipper rule already had.
+  **Requires Tampermonkey redeploy.**
+
+**v2.3**
 
 All previously active high-priority bugs resolved. Dashboard now accurately represents all 8 domains.
 
@@ -394,20 +419,22 @@ Key changes:
 
 ## Where do we go from here?
 
-v2.3 resolved all active high-priority issues. With production starvation fixed, domain
-coverage honest on the dashboard, and the Stage 2 project queue complete, the project is in
-a stable state for extended Stage 2 runs.
+v2.4 added LLM domain grading and closed the AutoClipper cost-crossover waste. Combined with
+the v2.3 production-starvation fix, honest dashboard domain coverage, and the complete Stage 2
+project queue, the project is in a stable state for extended Stage 2 runs — and now reports the
+health of every domain, even the ones it doesn't directly control.
 
 **Next architectural direction:**
-- **LLM domain grading** — rather than just labeling JS-handled domains as "auto", the LLM
-  could rate their health each tick (e.g. "Manufacturing: warn", "Business: healthy"). This
-  keeps the JS fast-path intact while giving the LLM visibility and eventually the ability to
-  suggest parameter adjustments when it spots starvation or inefficiency.
+- **LLM parameter hints** — the `Status:` line already reserves a colon separator
+  (`Manufacturing=warn:wire_threshold=200`) for the LLM to suggest a parameter change
+  alongside a grade. Next step is to parse that hint and pass it to the userscript as a
+  tunable (e.g. raise the wire buffer), turning grading from observation into gentle control.
+  This will require a `bridge.user.js` change and a Tampermonkey redeploy.
 
 **Backlog:**
 - **Expand LLM to all 7 domains** — grow SYSTEM_PROMPT so the LLM outputs an `Action:` line
   for every Stage 2 domain, not just Projects/Investments/Probes. Requires `num_predict`
-  increase (400→700+) and testing qwen2.5 compliance.
+  increase (500→700+) and testing qwen2.5 compliance.
 - **Stage 3 probe strategy refinement** — mechanics are wired; strategic guidance for
   balancing rep/haz/fac/harv/wire/combat is still thin.
 - **Multi-model competition** — run two different local models simultaneously and compare.

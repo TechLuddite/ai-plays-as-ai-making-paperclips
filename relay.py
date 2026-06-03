@@ -305,7 +305,17 @@ async function refresh() {
             } else if (dec.action === 'n/a') {
               rows += `<td style="text-align:center;color:#30363d;font-size:11px;padding:3px 5px">n/a</td>`;
             } else if (dec.action === 'auto') {
-              rows += `<td style="text-align:center;color:#484f58;font-size:11px;padding:3px 5px">auto</td>`;
+              // "auto" = fast rules own this domain. The LLM's advisory health grade
+              // (dec.status) shows as a small colored dot: dim green=healthy,
+              // amber=warn, red=critical. A red dot differs from "LLM Failed" red
+              // text — the dot means the JS is running but the LLM flags a concern.
+              // No status → no dot, just the dim gray "auto" as before.
+              const DOT = {healthy:'#2ea043', warn:'#d29922', critical:'#f85149'};
+              const dc  = DOT[dec.status];
+              const dot = dc
+                ? `<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${dc};margin-right:5px;vertical-align:middle"></span>`
+                : '';
+              rows += `<td style="text-align:center;color:#484f58;font-size:11px;padding:3px 5px">${dot}auto</td>`;
             } else {
               const isAct = dec.action !== 'nothing' && dec.action !== 'wait';
               const col   = isAct ? '#3fb950' : '#8b949e';
