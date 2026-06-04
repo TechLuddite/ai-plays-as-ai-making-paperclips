@@ -146,8 +146,19 @@
         return {
             colonized:      getText('colonizedDisplay'),
             probeTotal:     getText('probesTotalDisplay'),
+            probesLaunched: getText('probesLaunchedDisplay'),   // probes launched manually
+            probesBorn:     getText('probesBornDisplay'),       // self-replicated descendents
+            probeCost:      getText('probeCostDisplay'),        // clips per launched probe
+            // Probe Trust: allocate `available` (= total − used) points across the 8 stats.
             probeTrust:     getText('probeTrustUsedDisplay') + '/' + getText('probeTrustDisplay'),
+            probeTrustUsed: getText('probeTrustUsedDisplay'),
+            probeTrustTotal: getText('probeTrustDisplay'),
+            maxTrust:       getText('maxTrustDisplay'),         // cap on total probe trust
+            probeTrustCost: getText('probeTrustCostDisplay'),   // yomi for +1 probe trust
+            maxTrustCost:   getText('maxTrustCostDisplay'),     // honor to raise the cap
+            honor:          getText('honorDisplay'),
             drifters:       getText('drifterCount'),
+            driftersKilled: getText('driftersKilled'),
             probeSpeed:     getText('probeSpeedDisplay'),
             probeNav:       getText('probeNavDisplay'),
             probeRep:       getText('probeRepDisplay'),
@@ -899,6 +910,8 @@
             case 'raise_probe_combat':  success = clickBtn('btnRaiseProbeCombat');  break;
             case 'lower_probe_combat':  success = clickBtn('btnLowerProbeCombat');  break;
             case 'increase_probe_trust': success = clickBtn('btnIncreaseProbeTrust'); break;
+            case 'increase_max_trust':   success = clickBtn('btnIncreaseMaxTrust');   break;
+            case 'launch_probe':         success = clickBtn('btnMakeProbe');           break;
 
             case 'nothing':
             case 'wait':

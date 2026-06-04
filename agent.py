@@ -78,7 +78,10 @@ VALID ACTIONS — use exactly one, spelled exactly as shown:
     raise_probe_harv / lower_probe_harv       — harvester drone spawn rate
     raise_probe_wire / lower_probe_wire       — wire drone spawn rate
     raise_probe_combat / lower_probe_combat   — combat vs Drifters
-    increase_probe_trust                      — buy +1 probe trust (costs Yomi)
+    launch_probe                              — launch a Von Neumann probe (costs clips) — the
+                                                initial swarm; they then self-replicate
+    increase_probe_trust                      — buy +1 probe trust to allocate (costs Yomi)
+    increase_max_trust                        — raise the probe-trust CAP (costs Honor)
 
   wait
 
@@ -181,12 +184,23 @@ YOUR JOB — work through this priority list each tick:
    over the entire run. It is blocked by a hard guard regardless.
    NEVER buy Quantum Temporal Reversion — it resets game state backward.
 
-5. STAGE 3 PROBE DESIGN (when colonized appears in state):
-   - Self-Replication (rep) and Speed are highest leverage early — low rep stalls exploration
-   - Hazard Remediation (haz) sweet spot: 5-6 points; below 3 causes heavy probe losses
-   - If drifters > 0 and probeTotal falling → raise Combat immediately
-   - Fac, Harv, Wire drive production — keep roughly balanced
-   - increase_probe_trust expands your total probe budget (costs Yomi; ~1.89M total to max)
+5. STAGE 3 — SPACE EXPLORATION & PROBE DESIGN (when colonized appears in state). This is the
+   final stage: launch self-replicating Von Neumann probes to explore the universe (goal:
+   colonized → 100%). Work through this OPENING SEQUENCE, then maintain:
+   a) GET TRUST TO ALLOCATE: probeTrust shows used/total (e.g. "0/0"). You can only allocate
+      points you have. increase_probe_trust (costs Yomi — you have millions) buys +1 trust,
+      up to the Max. Buy trust until total reaches Max (the OBS flags when more is available).
+   b) ALLOCATE the trust across the 8 probe stats (raise_probe_*), per the wiki:
+      - Hazard Remediation (haz) → exactly 5-6 (below 3 = heavy probe losses)
+      - Self-Replication (rep) → at least 4 early — this is what grows the swarm; highest leverage
+      - Speed → a few points (rate of exploration); Exploration(nav) → a few (matter access)
+      - Leave Fac/Harv/Wire low at first (a big swarm self-provides); Combat at 0 until drifters
+   c) LAUNCH THE SWARM: launch_probe sends out probes (costs clips — you have plenty). Launch an
+      initial batch once haz+rep are set, then self-replication takes over. If probeTotal is 0,
+      launching probes is the priority — nothing explores without them.
+   d) MAINTAIN: if drifters appear and rise (or probeTotal falls) → raise_probe_combat to 6-8.
+      increase_max_trust (costs Honor, earned from winning battles) raises the trust cap for more
+      points later. Keep buying increase_probe_trust as Yomi allows; keep colonized climbing.
 
 6. WAIT — if nothing needs strategic attention this tick
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -370,7 +384,8 @@ def format_state(state):
         'harvesterLevel', 'wireDroneLevel',
         'availableMatter', 'nanoWire', 'maxStorage',
         # space (Phase 3)
-        'colonized', 'probeTotal', 'probeTrust', 'drifters',
+        'colonized', 'probeTotal', 'probesLaunched',
+        'probeTrust', 'maxTrust', 'honor', 'drifters',
         'probeSpeed', 'probeNav', 'probeRep', 'probeHaz',
         'probeFac', 'probeHarv', 'probeWire', 'probeCombat',
         'availableProjects',
@@ -466,6 +481,20 @@ def format_state(state):
             flag = " ⚠ UNDER ATTACK — consider raise_probe_combat"
         if k == 'colonized':
             flag = " ← primary Stage 3 goal (reach 100%)"
+        if k == 'probeTotal' and fv == 0:
+            flag = " ⚠ NO PROBES — launch_probe now (nothing explores without probes)"
+        if k == 'probeTrust':
+            # value looks like "used/total" — show available points and what to do.
+            try:
+                used, total = (float(x.replace(',', '').strip()) for x in str(v).split('/'))
+                avail = total - used
+                mx = safe_float(state.get('maxTrust'), total)
+                if avail >= 1:
+                    flag = f" → {int(avail)} trust to ALLOCATE: raise_probe_haz (→6) / raise_probe_rep (→4+) / speed"
+                elif total < mx:
+                    flag = f" → increase_probe_trust for more (have {int(total)}/{int(mx)} max)"
+            except (ValueError, ZeroDivisionError):
+                pass
         if k == 'maxStorage':
             # Battery storage — Space Exploration's last gate is 10,000,000 MW-seconds.
             if 0 < fv < 10_000_000:
@@ -734,7 +763,7 @@ def validate_action(action):
         'raise_probe_harv',  'lower_probe_harv',
         'raise_probe_wire',  'lower_probe_wire',
         'raise_probe_combat','lower_probe_combat',
-        'increase_probe_trust',
+        'increase_probe_trust', 'increase_max_trust', 'launch_probe',
     }
     if action not in valid:
         print(f"[WARN] Invalid action '{action}' — substituting wait")

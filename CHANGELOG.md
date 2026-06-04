@@ -4,6 +4,28 @@ All notable changes to this project are documented here.
 
 ---
 
+## [2.11] - 2026-06-04 — Stage 3 (Space Exploration + Von Neumann Probes)
+
+### Added
+- **Stage 3 launch + probe-trust actions** (`bridge.user.js`, `agent.py`) — Space Exploration was
+  bought and Stage 3 began, but the actions that actually *start and drive* it were missing (only
+  the probe-stat raise/lower allocation was wired). Added:
+  - `launch_probe` (btnMakeProbe) — launch the initial Von Neumann probe swarm (costs clips);
+    without probes, nothing explores. `increase_max_trust` (btnIncreaseMaxTrust) — raise the
+    probe-trust cap with Honor. (`increase_probe_trust` was already wired.)
+  - `getPhase3State()` now sends the fields the LLM needs: `probesLaunched`, `probesBorn`,
+    `probeCost`, `probeTrustUsed`/`probeTrustTotal`/`maxTrust`, `probeTrustCost`/`maxTrustCost`,
+    `honor`, `driftersKilled`.
+  - `format_state()` flags the Stage 3 opening: "NO PROBES — launch_probe now" when probeTotal=0,
+    and "N trust to ALLOCATE …" / "increase_probe_trust for more" from the used/total/max.
+  - SYSTEM_PROMPT rewrote the Stage 3 section into the wiki opening sequence: get trust → allocate
+    (haz 5–6, rep ≥4, some speed/nav) → launch the swarm → maintain (combat 6–8 vs drifters,
+    raise the cap with honor, keep colonized climbing toward 100%).
+  Stage 3 is LLM-driven (the model owns probe strategy — the most "game-playing" stage).
+  **Requires Tampermonkey redeploy.**
+
+---
+
 ## [2.10.4] - 2026-06-04
 
 ### Added

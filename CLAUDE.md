@@ -92,7 +92,9 @@ Python restarts alone do NOT update the browser script.
 - Stage 2: tournaments fully working (Yomi flowing, investment engine auto-upgrading to Level 3+);
   production starvation, domain output, project queue all resolved (v2.3); domain grading (v2.4);
   Power & manufacturing engine (solar/batteries/drones/factories) auto-built (v2.7)
-- Stage 3 (space exploration, probe design): actions are wired, strategy guidance still being refined
+- Stage 3 (space exploration, probe design): fully wired (v2.11) — launch_probe, increase_probe_trust,
+  increase_max_trust, and the 8 probe-stat allocations; SYSTEM_PROMPT has the wiki opening sequence.
+  LLM-driven. Live-validation of the probe strategy is the current frontier.
 - Best run: 13.5B+ clips, Stage 2, investment engine Level 3, Yomi accumulating, Marketing Level 20
 
 ## Known Issues
