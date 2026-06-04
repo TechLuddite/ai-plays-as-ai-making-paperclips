@@ -4,6 +4,26 @@ All notable changes to this project are documented here.
 
 ---
 
+## [2.9.3] - 2026-06-04
+
+### Fixed
+- **Processors over-ran memory in Stage 2 (162 vs 120)** (`agent.py`) — the v2.5 milestone
+  ladder soft-caps processors at ~half the memory target, but that logic lived only in
+  `check_trust_action()` (Stage 1 trust). Stage 2 gift-spending is LLM-driven, and the prompt/OBS
+  told it "add_memory until 120, then add_processor" — no cap, and a hard stop at 120 — so once
+  memory hit 120 the LLM poured every surplus gift into processors (reached 162, while ops were
+  already pinned at 120,000 and creativity was 858k). Fixes:
+  - Extracted the ladder into a shared `_mem_proc_ladder(mem, proc)` used by BOTH Stage 1 trust
+    and the Stage 2 OBS recommendation (memory leads to the next milestone — 120 → 175 → 250 —
+    processors trail at ~half).
+  - The OBS `swarmGifts` line now shows the ladder's exact recommendation ("SPEND NOW: add_memory
+    (rush memory to 175 …)" / "add_processor …"); SYSTEM_PROMPT tells the LLM to follow it and to
+    keep memory ahead of processors (don't stop at 120 — push to 175 for Stage 3).
+  Net effect: memory now keeps climbing past 120 toward 175/250 and processors hold until memory
+  catches up. Python-only — **no Tampermonkey redeploy** (restart agent).
+
+---
+
 ## [2.9.2] - 2026-06-04
 
 ### Changed

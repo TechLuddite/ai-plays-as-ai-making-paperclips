@@ -129,22 +129,24 @@ YOUR JOB — work through this priority list each tick:
    game will NOT spend them for you. Memory raises your ops ceiling (memory × 1000); you need
    memory 120 to unlock Space Exploration, passing 80 and 100 (which unlock Drone-flocking and
    factory upgrades) on the way. Two levers:
-   CRITICAL: add_memory GROWS memory (spends 1 gift). set_swarm_think does NOT grow memory —
-   it only GENERATES gifts. Once you have gifts banked, the ONLY way to raise memory is
-   add_memory, every tick, until memory = 120. Do NOT keep re-setting the slider.
+   CRITICAL: add_memory GROWS memory; add_processor builds regen/creativity (each spends 1
+   gift). set_swarm_think does NOT grow anything — it only GENERATES gifts. Keep memory AHEAD
+   of processors: memory should climb to 120 (Space Exploration), then keep going to 175 (and
+   250) for Stage 3, while processors trail at roughly HALF of memory. Do NOT let processors
+   pass memory.
 
    Each tick, do at most ONE swarm action, in this PRIORITY order:
    0) FIX FIRST: if swarmStatus shows "Disorganized" → sync_swarm (costs 5k yomi; you have
       plenty). A disorganized swarm won't behave until you sync.
-   1) SPEND (almost always this): if swarmGifts ≥ 1 AND memory < 120 → add_memory. Repeat it
-      EVERY tick — you usually have hundreds of gifts banked, so just keep spending. Once
-      memory ≥ 120 → add_processor (build regen) until gifts run low.
+   1) SPEND (almost always this): if swarmGifts ≥ 1 → do EXACTLY what the OBS "swarmGifts" line
+      recommends — it says "SPEND NOW: add_memory" or "SPEND NOW: add_processor" based on the
+      memory↔processor ladder (memory leads to the next milestone, processors trail at ~half).
+      Just follow it every tick; you usually have hundreds of gifts banked, so keep spending.
    2) START THINKING (rare — only when needed): if swarmGifts = 0 AND the slider is at Work
-      (OBS shows "set_swarm_think ONCE") → set_swarm_think. You normally do this ONCE; if the
-      OBS already says "already on Think", do NOT set it again — spend instead.
-      Once memory ≥ 120 and you want production back → set_swarm_balanced.
+      (OBS shows "set_swarm_think ONCE") → set_swarm_think. Do this ONCE; if the OBS already
+      says "already on Think", do NOT set it again — spend instead.
    3) Otherwise → nothing.
-   RULE OF THUMB: if a gift is waiting and memory < 120, the answer is add_memory — not the slider.
+   RULE OF THUMB: if a gift is waiting, do whatever the OBS swarmGifts line says — not the slider.
 
 3. STAGE 2 CONTEXT (when portValue is visible — Algorithmic Trading purchased):
    Revenue now comes from the investment engine, NOT clip sales. Large unsold clip counts
@@ -419,12 +421,13 @@ def format_state(state):
         if k == 'swarmStatus' and 'disorg' in str(v).lower():
             flag = " ⚠ DISORGANIZED — sync_swarm NOW (5k yomi); no gifts generate until you do"
         if k == 'swarmGifts' and fv >= 1:
-            # Swarm Gifts = the Stage 2 "trust". Tell the LLM exactly what to spend them on.
-            mem_now = safe_float(state.get('memory'), 0)
-            if mem_now < 120:
-                flag = f" → SPEND NOW: add_memory (memory {int(mem_now)} → 120 for Space Exploration)"
-            else:
-                flag = " → SPEND NOW: add_processor (memory target met — build regen/creativity)"
+            # Swarm Gifts = the Stage 2 "trust". Use the SAME ladder as Stage 1 so processors
+            # don't run away from memory: memory leads toward the next milestone (120 → 175 →
+            # 250), processors trail at ~half. (Bug fixed v2.9.3 — the LLM had over-built
+            # processors to 162 vs memory 120 because the old hint stopped memory at 120.)
+            rec, why = _mem_proc_ladder(safe_float(state.get('memory'), 0),
+                                        safe_float(state.get('processors'), 0))
+            flag = f" → SPEND NOW: {rec}  ({why})"
         if k == 'swarmThink':
             # Work/Think slider 0–200 (0 = all Work, 200 = all Think). set_swarm_think only
             # GENERATES gifts — it does NOT add memory. Once it's on Think, stop re-setting it
@@ -456,6 +459,27 @@ def format_state(state):
         lines.append(f"  {k:<22} {v}{flag}")
     return "\n".join(lines)
 
+def _mem_proc_ladder(mem, proc):
+    """Core memory/processor allocation policy — the SAME ladder for Stage 1 trust and Stage 2
+    Swarm Gifts: rush memory to the next milestone, soft-cap processors at ~half the target.
+    Memory sets the ops ceiling (mem × 1000); processors set regen + creativity. The walls
+    (config `memory_milestones`) are 20/70/120/175/250/300. Returns (action, reason)."""
+    MILESTONES = _cfg.get("memory_milestones", [20, 70, 120, 175, 250, 300])
+    PROC_FLOOR = _cfg.get("trust_proc_floor", 5)
+    mem, proc = int(mem), int(proc)
+    if proc < PROC_FLOOR:
+        return 'add_processor', f"bootstrap regen (processors {proc}/{PROC_FLOOR})"
+    target = next((m for m in MILESTONES if mem < m), None)
+    if target is None:
+        return 'add_processor', f"all memory milestones met (mem={mem}) — build regen"
+    # Processors soft-capped at ~half the current memory target (e.g. 70-wall → ~35 procs).
+    proc_cap = max(PROC_FLOOR, round(target / 2))
+    if proc >= proc_cap:
+        return 'add_memory', f"rush memory to {target} (processors at/over soft cap {proc_cap})"
+    if proc * 2 < mem:
+        return 'add_processor', f"processors trailing (proc={proc}, mem={mem}) — toward cap {proc_cap}"
+    return 'add_memory', f"rush memory to {target} (mem={mem}, proc={proc})"
+
 def check_trust_action(state):
     """
     Auto-balance processors and memory using the game's known memory walls.
@@ -479,12 +503,11 @@ def check_trust_action(state):
     Once every wall is cleared, the rest of the trust goes to processors.
 
     Tunables live in config.json: `memory_milestones`, `trust_proc_floor`.
+    NOTE: this is STAGE 1 only (spends Trust). Stage 2 uses the same `_mem_proc_ladder()`
+    via the OBS recommendation, but the LLM does the spending with Swarm Gifts.
 
     Returns (action, reason) or (None, None).
     """
-    MILESTONES = _cfg.get("memory_milestones", [20, 70, 120, 175, 250, 300])
-    PROC_FLOOR = _cfg.get("trust_proc_floor", 5)   # min processors so ops can regen at all
-
     trust = safe_float(state.get('trust'), 0)
     proc  = safe_float(state.get('processors'), 0)
     mem   = safe_float(state.get('memory'), 0)
@@ -492,36 +515,7 @@ def check_trust_action(state):
     available = trust - proc - mem
     if available < 1 or proc <= 0 or mem <= 0:
         return None, None
-    proc, mem = int(proc), int(mem)
-
-    # Bootstrap: with too few processors, ops barely regenerate — top them up first.
-    if proc < PROC_FLOOR:
-        return 'add_processor', f"bootstrap ops regen (processors {proc}/{PROC_FLOOR})"
-
-    # Find the next memory wall we have NOT cleared yet.
-    target = next((m for m in MILESTONES if mem < m), None)
-
-    if target is None:
-        # Every memory wall cleared — remaining trust goes to regen / creativity.
-        return 'add_processor', f"all memory walls cleared (mem={mem}) — building ops regen"
-
-    # Processors are soft-capped at ~half the current memory target
-    # (wiki: ~33–35 processors for the 70-memory HypnoDrones wall → 70 ÷ 2 = 35).
-    proc_cap = max(PROC_FLOOR, round(target / 2))
-
-    if proc >= proc_cap:
-        # Processors already meet this stage's need — pour everything into memory.
-        # (This is the over-allocation fix: when processors are at/over the cap we
-        #  stop adding them and drive memory to the wall instead.)
-        return 'add_memory', (f"rush memory to {target} for next project wall "
-                              f"(mem={mem}; processors at soft cap {proc_cap})")
-
-    # Below the soft cap: keep memory in the lead, let processors trail at ~half so
-    # ops still regenerate fast enough to fill the rising ceiling.
-    if proc * 2 < mem:
-        return 'add_processor', (f"processors trailing (proc={proc}, mem={mem}) — "
-                                f"topping up regen toward soft cap {proc_cap}")
-    return 'add_memory', f"rush memory to {target} for next project wall (mem={mem}, proc={proc})"
+    return _mem_proc_ladder(mem, proc)
 
 def is_emergency(state):
     wire       = safe_float(state.get('wire'),  fallback=999.0)
