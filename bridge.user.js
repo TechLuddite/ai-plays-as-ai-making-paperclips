@@ -59,6 +59,23 @@
         return isNaN(n) ? fallback : n;
     }
 
+    // Parse a big number that may use a word suffix, e.g. "1 sextillion", "47.1 sextillion",
+    // "100 million", "1,000". The game shows clip costs/totals this way (clips reach octillions).
+    const NUM_SCALE = {
+        thousand: 1e3, million: 1e6, billion: 1e9, trillion: 1e12, quadrillion: 1e15,
+        quintillion: 1e18, sextillion: 1e21, septillion: 1e24, octillion: 1e27,
+        nonillion: 1e30, decillion: 1e33,
+    };
+    function parseBigNum(text) {
+        if (!text) return 0;
+        const m = String(text).match(/([\d,.]+)\s*([a-zA-Z]+)?/);
+        if (!m) return 0;
+        const num = parseFloat(m[1].replace(/,/g, ''));
+        if (isNaN(num)) return 0;
+        const scale = m[2] ? (NUM_SCALE[m[2].toLowerCase()] || 1) : 1;
+        return num * scale;
+    }
+
     function isVisible(id) {
         const el = document.getElementById(id);
         return el && el.offsetParent !== null;
@@ -244,12 +261,13 @@
         const crtM  = text.match(/([\d,]+)\s*creat/i);
         const trstM = text.match(/\(\s*(\d+)\s*Trust\s*\)/i);
         const yomiM = text.match(/([\d,]+)\s*yomi/i);
+        // Clip costs use word suffixes ("1 sextillion clips") — capture number + optional word.
+        const clipM = text.match(/([\d,.]+)\s*([a-zA-Z]+)?\s*clips/i);
         if (opsM)  return { type: 'ops',        amount: parseInt(opsM[1].replace(/,/g,'')) };
         if (crtM)  return { type: 'creativity',  amount: parseInt(crtM[1].replace(/,/g,'')) };
         if (trstM) return { type: 'trust',       amount: parseInt(trstM[1]) };
         if (yomiM) return { type: 'yomi',        amount: parseInt(yomiM[1].replace(/,/g,'')) };
-        // NOTE: clip-cost projects (e.g. Self-correcting Supply Chain "1 sextillion clips")
-        // use word suffixes we don't parse yet — those won't auto-buy. See game_mechanics.md.
+        if (clipM) return { type: 'clips',       amount: parseBigNum(clipM[2] ? `${clipM[1]} ${clipM[2]}` : clipM[1]) };
         return null;
     }
 
@@ -304,6 +322,8 @@
         'momentum',                  // 20k creat — Performance can exceed 100% (→1000%+). Buy ASAP.
         'theory of mind',            // 25k creat — better tournament Yomi
         'swarm computing',           // 36k yomi — unlocks Swarm Gifts (memory/processors source)
+        'self-correcting supply chain', // 1 sextillion CLIPS — each factory then boosts every
+                                        //   factory's output 1,000× (massive; buy ASAP)
         'upgraded factories',        // 80k ops — needs memory ≥ 80
         'hyperspeed factories',      // 85k ops — needs memory ≥ 85
         'collision avoidance',       // 80k ops — "Drone flocking: collision avoidance" (memory ≥ 80)
@@ -340,6 +360,7 @@
         const currentCrt   = getNum('creativity');
         const currentTrust = parseInt(getText('trust') || '0');
         const currentYomi  = getNum('yomiDisplay', 0);
+        const currentClips = parseBigNum(getText('unusedClipsDisplay'));  // Stage 2 spendable pool
 
         const btns = Array.from(
             document.querySelectorAll('#projectListTop button, #projectsDiv button')
@@ -354,7 +375,8 @@
                     (cost.type === 'ops'        && currentOps   >= cost.amount) ||
                     (cost.type === 'creativity'  && currentCrt   >= cost.amount) ||
                     (cost.type === 'trust'       && currentTrust >= cost.amount) ||
-                    (cost.type === 'yomi'        && currentYomi  >= cost.amount);
+                    (cost.type === 'yomi'        && currentYomi  >= cost.amount) ||
+                    (cost.type === 'clips'       && currentClips >= cost.amount);
                 if (canAfford) {
                     btn.click();
                     lastProjectClick = Date.now();

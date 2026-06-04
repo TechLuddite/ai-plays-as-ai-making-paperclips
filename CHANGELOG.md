@@ -4,6 +4,22 @@ All notable changes to this project are documented here.
 
 ---
 
+## [2.10.2] - 2026-06-04
+
+### Fixed
+- **Clip-cost projects never auto-bought (e.g. Self-correcting Supply Chain)** (`bridge.user.js`)
+  — projects priced in CLIPS use word suffixes ("1 sextillion clips"), which `getProjectCost()`
+  couldn't parse, so it returned `null` and the auto-buyer skipped them. Self-correcting Supply
+  Chain (1 sextillion clips — "each factory then boosts every factory's output 1,000×", a massive
+  production multiplier toward the 5-octillion Space Exploration goal) was sitting available and
+  affordable (47 sextillion unused clips) but unbought. Fixes:
+  - Added `parseBigNum()` (handles thousand…decillion word suffixes) and a `clips` cost type in
+    `getProjectCost()`; `autoSpendOnProjects()` now checks clip cost against the unused-clip pool.
+  - Added `self-correcting supply chain` to `PROJECT_PRIORITY` (high — buy ASAP).
+  **Requires Tampermonkey redeploy.**
+
+---
+
 ## [2.10.1] - 2026-06-04
 
 ### Fixed
