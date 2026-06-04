@@ -92,15 +92,28 @@ Python restarts alone do NOT update the browser script.
 - Stage 2: tournaments fully working (Yomi flowing, investment engine auto-upgrading to Level 3+);
   production starvation, domain output, project queue all resolved (v2.3); domain grading (v2.4);
   Power & manufacturing engine (solar/batteries/drones/factories) auto-built (v2.7)
-- Stage 3 (space exploration, probe design): fully wired (v2.11) — launch_probe, increase_probe_trust,
-  increase_max_trust, and the 8 probe-stat allocations; SYSTEM_PROMPT has the wiki opening sequence.
-  LLM-driven. Live-validation of the probe strategy is the current frontier.
+- Stage 3 (space exploration, probe design): actions/prompt/OBS fully wired (v2.11), BUT the LLM
+  STALLS at the bootstrap — `wait` every tick, fixated on stale Stage-2 memory/processor reasoning,
+  never launches probes (colonized stuck at 0%). See Known Issues (HIGH) + memory
+  `stage3_llm_stall_deepdive.md`. Next session: deep dive to fix it LLM-side (no JS).
 - Best run: 13.5B+ clips, Stage 2, investment engine Level 3, Yomi accumulating, Marketing Level 20
 
 ## Known Issues
 
 ### ACTIVE — HIGH PRIORITY
-*(none — Swarm Gifts now LLM-driven in v2.9)*
+- **Stage 3 LLM-driven bootstrap STALLS** (`agent.py` — prompt/OBS, not bridge) — Space Exploration
+  launched (v2.11 wired all probe actions: `launch_probe`, `increase_probe_trust`,
+  `increase_max_trust`, the 8 stat allocations, plus OBS flags + a wiki opening-sequence prompt),
+  but the game is FROZEN at colonized 0% / 0 probes / trust 0/0. The LLM emits `wait` every tick
+  with a byte-identical, Stage-2-ANCHORED thought: *"Memory 382, processors 1294 >> memory. Need to
+  add_memory urgently. No new projects available and no probes launched."* It even notices "no
+  probes launched" but never acts — it's stuck on the now-irrelevant memory/processor narrative and
+  never engages the probe domain. The actions exist; the LLM's INPUTS are steering it wrong.
+  CONSTRAINT (owner, explicit): keep Stage 3 **LLM-driven** — do NOT switch to a JS auto-player or a
+  hard-override backstop for the probe bootstrap. Fix the LLM's inputs (stage-aware prompt/OBS,
+  history reset on phase change, suppress stale Stage-1/2 flags in Stage 3, maybe qwen3.6) so it
+  engages. NEXT SESSION = deep dive: see memory `stage3_llm_stall_deepdive.md` for the full
+  hypotheses + fix directions + investigation steps.
 
 ### ACTIVE — LOW PRIORITY
 - **Dashboard needs further refinement** — the v2.8 stage-grouped layout is a first pass; owner

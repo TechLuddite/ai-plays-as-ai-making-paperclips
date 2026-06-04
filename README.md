@@ -348,7 +348,21 @@ It's a work in progress. But it works.
 
 ## Version History
 
-**v2.9 (current)**
+**v2.11 (current) — reached Stage 3 (the endgame)**
+
+The agent played through all of Stage 2 autonomously and launched **Space Exploration**, entering
+Stage 3 (self-replicating Von Neumann probes colonizing the universe). v2.11 wired the Stage 3
+actions — `launch_probe`, `increase_probe_trust`, `increase_max_trust`, and the eight probe-stat
+allocations — with a wiki-based opening-sequence prompt. **Known issue:** the LLM currently *stalls*
+at the Stage 3 bootstrap (it stays anchored to Stage-2 reasoning and doesn't launch probes); fixing
+that LLM-side is the next focus. **Requires Tampermonkey redeploy.**
+
+The v2.10.x series got there: **endgame scaling** (factories → 200, drones → 50k with ratio-safe
+batch building), **clip-cost project parsing** (Self-correcting Supply Chain's 1000×-per-factory
+boost), **batched battery storage** toward Space Exploration's 10M MW-sec gate, and an **LLM-first
+Space Exploration launch** (with a backstop so the run couldn't idle past the Stage 2 → 3 door).
+
+**v2.9**
 
 LLM-first Stage 2. The local model now drives **Swarm Computing** — the Stage 2 progression
 engine — instead of a JS override, in line with the project's vision of keeping the LLM central.
