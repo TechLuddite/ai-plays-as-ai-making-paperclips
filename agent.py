@@ -129,17 +129,22 @@ YOUR JOB — work through this priority list each tick:
    game will NOT spend them for you. Memory raises your ops ceiling (memory × 1000); you need
    memory 120 to unlock Space Exploration, passing 80 and 100 (which unlock Drone-flocking and
    factory upgrades) on the way. Two levers:
+   CRITICAL: add_memory GROWS memory (spends 1 gift). set_swarm_think does NOT grow memory —
+   it only GENERATES gifts. Once you have gifts banked, the ONLY way to raise memory is
+   add_memory, every tick, until memory = 120. Do NOT keep re-setting the slider.
+
    Each tick, do at most ONE swarm action, in this PRIORITY order:
    0) FIX FIRST: if swarmStatus shows "Disorganized" → sync_swarm (costs 5k yomi; you have
-      plenty). A disorganized swarm generates NO gifts, so nothing else works until you sync.
-   1) SPEND a waiting gift: if swarmGifts ≥ 1 → add_memory (until memory reaches 120), then
-      add_processor. Each spends ONE gift. This is how memory grows in Stage 2.
-   2) GENERATE gifts: if no gift is waiting and the slider isn't already on Think while memory
-      < 120 → set_swarm_think (≈90%). Gifts only appear when drones "think". (If the OBS shows
-      the slider at Work / "Next gift in Infinity", you MUST set_swarm_think or memory stays stuck.)
-      Once memory ≥ 120 → set_swarm_balanced (≈50%) to favor production again.
+      plenty). A disorganized swarm won't behave until you sync.
+   1) SPEND (almost always this): if swarmGifts ≥ 1 AND memory < 120 → add_memory. Repeat it
+      EVERY tick — you usually have hundreds of gifts banked, so just keep spending. Once
+      memory ≥ 120 → add_processor (build regen) until gifts run low.
+   2) START THINKING (rare — only when needed): if swarmGifts = 0 AND the slider is at Work
+      (OBS shows "set_swarm_think ONCE") → set_swarm_think. You normally do this ONCE; if the
+      OBS already says "already on Think", do NOT set it again — spend instead.
+      Once memory ≥ 120 and you want production back → set_swarm_balanced.
    3) Otherwise → nothing.
-   NOTE: a waiting gift (swarmGifts ≥ 1) is worth more than re-setting the slider — spend it first.
+   RULE OF THUMB: if a gift is waiting and memory < 120, the answer is add_memory — not the slider.
 
 3. STAGE 2 CONTEXT (when portValue is visible — Algorithmic Trading purchased):
    Revenue now comes from the investment engine, NOT clip sales. Large unsold clip counts
@@ -421,15 +426,14 @@ def format_state(state):
             else:
                 flag = " → SPEND NOW: add_processor (memory target met — build regen/creativity)"
         if k == 'swarmThink':
-            # Work/Think slider 0–200 (0 = all Work, 200 = all Think).
-            mem_now = safe_float(state.get('memory'), 0)
-            if fv <= 0:
-                flag = " ⚠ at WORK — NO gifts generating; set_swarm_think to grow memory toward 120"
+            # Work/Think slider 0–200 (0 = all Work, 200 = all Think). set_swarm_think only
+            # GENERATES gifts — it does NOT add memory. Once it's on Think, stop re-setting it
+            # and SPEND the banked gifts (add_memory) instead.
+            pct = int(fv / 2) if fv >= 0 else 0
+            if fv < 80:                       # slider below ~40% Think
+                flag = f" (~{pct}% Think) — set_swarm_think ONCE to start gifts; then spend them"
             else:
-                pct = int(fv / 2)
-                flag = f" (~{pct}% Think)"
-                if mem_now < 120 and pct < 80:
-                    flag += " — memory<120, consider set_swarm_think (~90%) to rush it"
+                flag = f" (~{pct}% Think) ✓ already on Think — do NOT re-set; SPEND gifts (add_memory)"
         if k == 'performance' and fv >= 0:
             # Factory/Drone Performance — Stage 2 power health (JS auto-builds solar farms).
             # NOTE: performance reads 0 when there are no consumers yet (cold start) — that's

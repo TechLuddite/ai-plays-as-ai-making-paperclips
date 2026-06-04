@@ -4,6 +4,22 @@ All notable changes to this project are documented here.
 
 ---
 
+## [2.9.2] - 2026-06-04
+
+### Changed
+- **Faster memory climb — stop the LLM wasting ticks re-setting the slider** (`agent.py`) — with
+  the swarm working, the LLM alternated `set_swarm_think` / `add_memory`, roughly halving the
+  memory growth rate while gifts piled up unspent (950+ banked). Root cause was a misconception
+  in its thoughts ("set_swarm_think to grow memory") — but set_swarm_think only GENERATES gifts;
+  only `add_memory` grows memory. Fixed by teaching, not overriding:
+  - SYSTEM_PROMPT Swarm section now states it plainly and says: if a gift is waiting and memory
+    < 120, the answer is `add_memory` EVERY tick — set the slider only once (when at Work).
+  - `format_state()` swarmThink line now reads "✓ already on Think — do NOT re-set; SPEND gifts
+    (add_memory)" once the slider is on Think, instead of nudging set_swarm_think again.
+  Python-only — **no Tampermonkey redeploy** (restart agent).
+
+---
+
 ## [2.9.1] - 2026-06-04
 
 ### Fixed
