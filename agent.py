@@ -770,6 +770,7 @@ def run():
 
     prev_clips = 0  # used to detect when a new game has been started
     withdraw_cooldown = 0  # ticks remaining where deposit is suppressed after a withdraw
+    swarm_sync_cooldown = 0  # ticks to wait after a sync before checking disorganization again
     domain_loop_tracker = {}  # domain → list of last 5 actions (updated after each LLM response)
     domain_loop_warnings = ""  # injected into the NEXT tick's prompt
 
@@ -825,6 +826,22 @@ def run():
             print(f"[!!!] TRUST: {trust_reason}")
             ov.append({"action": trust_action, "args": {},
                        "thought": f"OVERRIDE: {trust_reason}"})
+
+        # Swarm disorganization recovery (Stage 2) — deterministic mechanical fix.
+        # A disorganized swarm halts Swarm Gift generation; the cure is "Synchronize the Swarm"
+        # (5,000 yomi, of which we have millions). The LLM repeatedly failed to act on this and
+        # got stuck, so — like wire/trust/AutoTourney — it becomes a hard override. The LLM
+        # still owns the *strategic* swarm decisions (slider, gift allocation); this only fires
+        # the binary "it's broken → fix it" recovery. Cooldown avoids double-spending 5k yomi
+        # while the status updates after a sync.
+        if swarm_sync_cooldown > 0:
+            swarm_sync_cooldown -= 1
+        elif 'disorg' in str(state.get('swarmStatus', '')).lower() \
+                and safe_float(state.get('yomi'), 0) >= 5000:
+            print(f"[!!!] SWARM: Disorganized — synchronizing (5k yomi)")
+            ov.append({"action": "sync_swarm", "args": {},
+                       "thought": "OVERRIDE: swarm Disorganized — Synchronize the Swarm (5k yomi)"})
+            swarm_sync_cooldown = 5   # ~10s for the status to update before re-checking
 
         # Investment management (portValue present = Algorithmic Trading purchased)
         if state.get('portValue', ''):

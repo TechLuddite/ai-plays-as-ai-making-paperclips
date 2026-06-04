@@ -4,6 +4,25 @@ All notable changes to this project are documented here.
 
 ---
 
+## [2.10.1] - 2026-06-04
+
+### Fixed
+- **Swarm never got synced — LLM stuck ignoring the disorganization** (`agent.py`) — with
+  production scaling fine, the swarm sat "Disorganized" and the LLM looped on `wait` (identical
+  thought 10+ ticks), never issuing `sync_swarm`. The per-domain loop-breaker fired its alert but
+  qwen2.5 ignored it: the LLM was idle (memory maxed, gifts useless) and kept missing the one real
+  pending action. Disorganization recovery is deterministic and mechanical — so, like the wire/
+  trust/AutoTourney/investment recoveries, it's now a HARD OVERRIDE: if `swarmStatus` is
+  Disorganized and yomi ≥ 5,000, the agent fires `sync_swarm` before the LLM runs (with a short
+  cooldown so it doesn't double-spend 5k yomi while the status updates). The LLM still owns the
+  strategic swarm decisions (slider, gift allocation) — only the binary "it's broken → fix it"
+  recovery is overridden. `sync_swarm` already shipped in the bridge (v2.9.1), so this is
+  Python-only — **no Tampermonkey redeploy** (restart agent).
+- Confirmed live: v2.10 endgame scaling working — clip rate ~16.8 quadrillion → ~742 sextillion/
+  sec, factories 10 → 43→200, drones batching at a healthy ~1.44 ratio.
+
+---
+
 ## [2.10] - 2026-06-04 — Stage 2 endgame scaling
 
 ### Changed
