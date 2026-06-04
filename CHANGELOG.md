@@ -4,6 +4,31 @@ All notable changes to this project are documented here.
 
 ---
 
+## [2.10] - 2026-06-04 — Stage 2 endgame scaling
+
+### Changed
+- **Raised the Stage 2 build targets so production can reach Space Exploration** (`bridge.user.js`)
+  — diagnosed live: the agent had maxed its conservative early-Stage-2 caps (10 factories,
+  500 drones) and plateaued. Clip production sat at ~16.8 quadrillion/sec — about 6 million×
+  short of the 5 octillion clips Space Exploration needs — so the agent was idling (memory/
+  processors overshot, gifts dumped into useless processors, lots of `wait`). New targets
+  (wiki "Quickening" endgame, all self-paced by clip affordability via `!btn.disabled`):
+  - `FACTORY_TARGET` 10 → 200, `DRONE_TARGET` 500 → 50000, `BATTERY_MIN` 20 → 200.
+- **Batch drone building** (`bridge.user.js`) — single drone builds (1 per 800 ms) can't reach
+  tens of thousands in any reasonable time. Added `buildDroneBatch()` using the +10/+100/+1k
+  buttons, with each batch CAPPED so neither drone type exceeds 1.5× the other. This keeps the
+  swarm Organized AND gradually corrects an already-disorganized ratio (simulated: 191/309 =
+  1.618 → converges to ~1.42, never exceeding 1.5). Power headroom (1 MW/drone) also caps the
+  batch, so drones and solar farms leapfrog as production scales.
+  **Requires Tampermonkey redeploy.**
+
+### Note
+- Targets are tunable constants at the top of `bridge.user.js` — start here and raise/lower
+  after watching a run. The drone ratio fix (≤1.5) means the recurring "Disorganized" syncs
+  should stop once the swarm rebuilds at the new ratio.
+
+---
+
 ## [2.9.3] - 2026-06-04
 
 ### Fixed

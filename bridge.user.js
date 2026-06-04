@@ -30,13 +30,20 @@
     const SOLAR_MIN      = 5;      // cold-start baseline solar farms (cost grows STEEPLY —
                                    //   ~32B clips for the 8th — so keep the baseline small and
                                    //   let production-funded deficit-provisioning scale it up)
-    const BATTERY_MIN    = 20;     // battery towers (cheap hedge; built last, after consumers)
-    const DRONE_TARGET   = 500;    // total drones to build (wiki: "leave drones at 500")
+    const BATTERY_MIN    = 200;    // battery towers (cheap hedge + step toward the 10M MW-sec
+                                   //   Space Exploration needs; built last, after consumers)
+    const DRONE_TARGET   = 50000;  // total drones — ENDGAME scale (v2.10). The old 500 capped
+                                   //   wire throughput and stalled clip production far below the
+                                   //   5 octillion Space Exploration needs. Self-paced by clip
+                                   //   affordability (!btn.disabled), so it only builds what it
+                                   //   can afford; raise/lower to taste.
     const DRONE_RATIO    = 1.45;   // wire drones ÷ harvester drones. The wiki's "golden ratio"
                                    // 1.618 is the PRODUCTION ideal but it EXCEEDS the swarm's
                                    // 1.5× imbalance limit → "Disorganized" (halts gifts, costs
                                    // 5k yomi to Synchronize). Stay safely under 1.5 to avoid it.
-    const FACTORY_TARGET = 10;     // clip factories to build (wiki: 10 unlocks Upgraded Factories)
+    const FACTORY_TARGET = 200;    // clip factories — ENDGAME scale (v2.10; wiki: "you'll need a
+                                   //   lot of factories (~200)"). 10 was an early-game cap that
+                                   //   plateaued production. Self-paced by clip affordability.
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -458,6 +465,20 @@
         return false;
     }
 
+    // Build up to `n` drones of a type using the largest affordable batch button (+1k/+100/
+    // +10/×1). Single builds can't reach the endgame's huge drone counts in reasonable time,
+    // so we batch — but the caller caps `n` so a batch never breaks the ≤1.5 swarm ratio.
+    function buildDroneBatch(type, n) {
+        const ids = type === 'wire'
+            ? ['btnWireDronex1000', 'btnWireDronex100', 'btnWireDronex10', 'btnMakeWireDrone']
+            : ['btnHarvesterx1000', 'btnHarvesterx100', 'btnHarvesterx10', 'btnMakeHarvester'];
+        const sizes = [1000, 100, 10, 1];
+        for (let i = 0; i < ids.length; i++) {
+            if (n >= sizes[i] && buildClick(ids[i])) return sizes[i];
+        }
+        return 0;
+    }
+
     function autoStage2Manufacturing() {
         if (!isVisible('powerDiv')) return;                       // domain not unlocked yet
         if (Date.now() - lastStage2Click < STAGE2_MS) return;     // rate limit
@@ -500,16 +521,26 @@
                 return;
             }
         }
-        // Build a drone (1 MW) into spare power, keeping wire ≈ 1.618 × harvester.
-        // Single builds keep the ratio tight; >1.5× imbalance disorganizes the swarm.
+        // Build drones (1 MW each) into spare power, targeting wire ≈ DRONE_RATIO × harvester.
+        // Batch with the +10/+100/+1k buttons (single builds can't reach endgame counts), but
+        // CAP each batch so neither type exceeds 1.5× the other — staying ≤1.5 keeps the swarm
+        // Organized (and gradually fixes an already-disorganized ratio). The 1 MW/drone power
+        // headroom also caps the batch, so drones and solar leapfrog as production scales.
         if (wantDrone && headroom >= 1) {
-            if (wireD < harv * DRONE_RATIO) {
-                if (buildClick('btnMakeWireDrone')) {
-                    console.log(`[AGENT] Wire Drone (harv=${harv} wire=${wireD})`);
-                    return;
-                }
-            } else if (buildClick('btnMakeHarvester')) {
-                console.log(`[AGENT] Harvester Drone (harv=${harv} wire=${wireD})`);
+            let type, maxByRatio;
+            if (wireD < harv * DRONE_RATIO) {            // need more wire drones
+                type = 'wire';
+                maxByRatio = Math.floor(harv * 1.5) - wireD;   // keep wire/harv ≤ 1.5
+            } else {                                     // need more harvesters
+                type = 'harvester';
+                maxByRatio = Math.floor(wireD * 1.5) - harv;   // keep harv/wire ≤ 1.5
+            }
+            // How many we may add: limited by ratio, remaining-to-target, and power headroom.
+            let n = Math.min(maxByRatio, DRONE_TARGET - drones, headroom);
+            if (n < 1) n = 1;                            // always allowed to nudge toward balance
+            const built = buildDroneBatch(type, n);
+            if (built) {
+                console.log(`[AGENT] ${type} drones +${built} (harv=${harv} wire=${wireD})`);
                 return;
             }
         }
