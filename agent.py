@@ -111,6 +111,16 @@ WHAT THE AGENT HANDLES AUTOMATICALLY — never choose these:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 YOUR JOB — work through this priority list each tick:
 
+0. ⭐ SPACE EXPLORATION — THE #1 PRIORITY WHENEVER IT IS AVAILABLE. This is the one-way
+   gateway from Stage 2 to Stage 3, and the whole Stage 2 buildup exists to reach it.
+   The game lists "Space Exploration" in availableProjects ONLY once every requirement is
+   met (120,000 ops + 5 octillion clips + 10,000,000 MW-sec battery storage). So the moment
+   you see "Space Exploration" in availableProjects (the OBS marks it 🚀 LAUNCH NOW), output
+   buy_project:Space Exploration as your Projects action THIS TICK. Do not wait, do not idle,
+   do not pick anything else — buy it. You are well-prepared (memory and creativity far exceed
+   what Stage 3 needs). Until it appears in availableProjects, you cannot buy it yet — continue
+   with the list below.
+
 1. STRATEGIC MODELING / YOMI (when autoTourneyOn appears in state):
    IMPORTANT: tournaments COST ops and AWARD Yomi — they do NOT cost Yomi.
    Yomi is the reward, not the price. AutoTourney runs tournaments automatically
@@ -358,7 +368,7 @@ def format_state(state):
         'performance', 'powerProduction', 'powerConsumption',
         'farmLevel', 'batteryLevel', 'factoryLevel',
         'harvesterLevel', 'wireDroneLevel',
-        'availableMatter', 'nanoWire',
+        'availableMatter', 'nanoWire', 'maxStorage',
         # space (Phase 3)
         'colonized', 'probeTotal', 'probeTrust', 'drifters',
         'probeSpeed', 'probeNav', 'probeRep', 'probeHaz',
@@ -456,6 +466,17 @@ def format_state(state):
             flag = " ⚠ UNDER ATTACK — consider raise_probe_combat"
         if k == 'colonized':
             flag = " ← primary Stage 3 goal (reach 100%)"
+        if k == 'maxStorage':
+            # Battery storage — Space Exploration's last gate is 10,000,000 MW-seconds.
+            if 0 < fv < 10_000_000:
+                flag = f" (Space Exploration storage gate: {fv/1e7*100:.0f}% of 10,000,000 MW-sec)"
+            elif fv >= 10_000_000:
+                flag = " ✓ storage gate met for Space Exploration"
+        if k == 'availableProjects' and 'space exploration' in str(v).lower():
+            # The game lists Space Exploration only once ALL its requirements are met
+            # (120k ops + 5 octillion clips + 10M MW-sec). So its presence = ready to launch.
+            flag = (" 🚀 ← LAUNCH NOW: buy_project:Space Exploration — this advances to STAGE 3 "
+                    "(you are well-prepared). This is your TOP priority.")
         lines.append(f"  {k:<22} {v}{flag}")
     return "\n".join(lines)
 
@@ -771,6 +792,7 @@ def run():
     prev_clips = 0  # used to detect when a new game has been started
     withdraw_cooldown = 0  # ticks remaining where deposit is suppressed after a withdraw
     swarm_sync_cooldown = 0  # ticks to wait after a sync before checking disorganization again
+    space_explore_seen = 0  # ticks Space Exploration has been available but unbought (LLM-first backstop)
     domain_loop_tracker = {}  # domain → list of last 5 actions (updated after each LLM response)
     domain_loop_warnings = ""  # injected into the NEXT tick's prompt
 
@@ -842,6 +864,21 @@ def run():
             ov.append({"action": "sync_swarm", "args": {},
                        "thought": "OVERRIDE: swarm Disorganized — Synchronize the Swarm (5k yomi)"})
             swarm_sync_cooldown = 5   # ~10s for the status to update before re-checking
+
+        # Space Exploration — the Stage 2 → Stage 3 gateway (the goal of the whole Stage 2
+        # buildup). It's the LLM's #1 priority in the prompt, so the LLM gets first crack at
+        # launching it. But this is a one-time transition we must not idle past — so if it stays
+        # available for a few ticks without the LLM buying it, a backstop override launches it.
+        # (The game lists "Space Exploration" in availableProjects only when ALL requirements are
+        #  met: 120k ops + 5 octillion clips + 10M MW-sec storage.)
+        if 'space exploration' in str(state.get('availableProjects', '')).lower():
+            space_explore_seen += 1
+            if space_explore_seen >= 3:
+                print(f"[!!!] SPACE EXPLORATION available {space_explore_seen} ticks — launching (backstop)")
+                ov.append({"action": "buy_project", "args": {"name": "Space Exploration"},
+                           "thought": "OVERRIDE: Space Exploration ready — launching Stage 3"})
+        else:
+            space_explore_seen = 0
 
         # Investment management (portValue present = Algorithmic Trading purchased)
         if state.get('portValue', ''):

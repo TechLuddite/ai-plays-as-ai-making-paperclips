@@ -4,6 +4,22 @@ All notable changes to this project are documented here.
 
 ---
 
+## [2.10.4] - 2026-06-04
+
+### Added
+- **Space Exploration launch (Stage 2 → Stage 3 trigger)** (`agent.py`) — the goal of the whole
+  Stage 2 buildup. The game lists "Space Exploration" in availableProjects only once every
+  requirement is met (120k ops + 5 octillion clips + 10M MW-sec storage), so its presence = ready.
+  - OBS: `maxStorage` now shows progress toward the 10M MW-sec gate; when Space Exploration is
+    listed, the availableProjects line is flagged "🚀 LAUNCH NOW".
+  - SYSTEM_PROMPT: Space Exploration is the explicit #1 priority — buy it the moment it appears.
+  - LLM-first with a backstop: the LLM gets first crack at `buy_project:Space Exploration`; if it
+    stays available for 3 ticks unbought, a hard-override launches it (so the run can't idle past
+    this one-time transition — the failure mode seen with the swarm sync).
+  Python-only — **no Tampermonkey redeploy** (restart agent).
+
+---
+
 ## [2.10.3] - 2026-06-04
 
 ### Changed
