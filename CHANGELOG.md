@@ -4,6 +4,19 @@ All notable changes to this project are documented here.
 
 ---
 
+## [2.10.3] - 2026-06-04
+
+### Changed
+- **Batteries now build in +100/+10 batches toward the 10M MW-sec Space Exploration gate**
+  (`bridge.user.js`) — with clips (6 octillion) and ops already past Space Exploration's
+  thresholds, battery storage is the last requirement (10,000,000 MW-seconds). The builder was
+  adding batteries one at a time, and the old `BATTERY_MIN=200` would have capped storage at
+  ~2M MW-sec anyway. Replaced with `BATTERY_TARGET_MW = 10,000,000`: the builder now reads
+  `maxStorage` and builds batteries with the +100/+10 buttons until storage reaches the target.
+  **Requires Tampermonkey redeploy.**
+
+---
+
 ## [2.10.2] - 2026-06-04
 
 ### Fixed

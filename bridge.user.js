@@ -30,8 +30,9 @@
     const SOLAR_MIN      = 5;      // cold-start baseline solar farms (cost grows STEEPLY —
                                    //   ~32B clips for the 8th — so keep the baseline small and
                                    //   let production-funded deficit-provisioning scale it up)
-    const BATTERY_MIN    = 200;    // battery towers (cheap hedge + step toward the 10M MW-sec
-                                   //   Space Exploration needs; built last, after consumers)
+    const BATTERY_TARGET_MW = 10000000;  // build battery storage up to this many MW-seconds —
+                                   //   Space Exploration's power requirement (the last Stage 2
+                                   //   gate). Built last (after consumers), using +100/+10 buttons.
     const DRONE_TARGET   = 50000;  // total drones — ENDGAME scale (v2.10). The old 500 capped
                                    //   wire throughput and stalled clip production far below the
                                    //   5 octillion Space Exploration needs. Self-paced by clip
@@ -514,6 +515,7 @@
         const wireD     = getNum('wireDroneLevelDisplay', 0);
         const drones    = harv + wireD;
         const headroom  = prod - cons;                            // spare MW
+        const maxStorage = getNum('maxStorage', 0);              // MW-seconds of battery storage
 
         // 1) REAL POWER DEFICIT: consumers exist and production has fallen behind → solar.
         if (cons > 0 && prod < cons * POWER_MARGIN) {
@@ -575,10 +577,14 @@
             return;
         }
 
-        // 5) BATTERIES — cheap power hedge, lowest priority (only once consumers are maxed).
-        if (batteries < BATTERY_MIN && !wantFactory && !wantDrone && buildClick('btnMakeBattery')) {
-            console.log(`[AGENT] Battery Tower (${batteries + 1}/${BATTERY_MIN})`);
-            return;
+        // 5) BATTERIES — build storage up to BATTERY_TARGET_MW (Space Exploration's 10M MW-sec
+        //    requirement). Use +100/+10 buttons so we don't crawl there one battery at a time.
+        //    Lowest priority (after consumers); batteries cost clips, not power.
+        if (maxStorage < BATTERY_TARGET_MW && !wantFactory && !wantDrone) {
+            if (buildClick('btnBatteryx100') || buildClick('btnBatteryx10') || buildClick('btnMakeBattery')) {
+                console.log(`[AGENT] Battery Tower (storage ${maxStorage}/${BATTERY_TARGET_MW} MW-sec)`);
+                return;
+            }
         }
     }
 
