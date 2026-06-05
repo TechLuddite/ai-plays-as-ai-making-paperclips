@@ -348,7 +348,17 @@ It's a work in progress. But it works.
 
 ## Version History
 
-**v2.12.9 (current) — fix fresh-game stage misdetection**
+**v2.12.10 (current) — fix AutoClipper/MegaClipper cost-crossover guard**
+
+The agent kept buying AutoClippers even when MegaClippers were cheaper (live: AutoClipper $7,783 vs
+MegaClipper $5,072). The v2.4 cost-crossover guard was logically correct but silently dead: it (and
+the MegaClipper auto-buy) checked availability via a container-div id (`megaClipperDiv`) that doesn't
+resolve in the live game, so the "Mega is the better deal" branch never fired. Fixed by gating off the
+confirmed `btnMakeMegaClipper` button id instead. Now once MegaClippers are cheaper, AutoClipper buys
+are skipped and the cash flows to the cheaper, far-more-productive MegaClipper. (`bridge.user.js` —
+needed a Tampermonkey redeploy.)
+
+**v2.12.9 — fix fresh-game stage misdetection**
 
 On a freshly-restarted game the agent correctly read Stage 1, then flipped to Stage 2 (and began
 taking Stage-2/late-game actions) the instant Quantum Computing was bought. The browser bridge's

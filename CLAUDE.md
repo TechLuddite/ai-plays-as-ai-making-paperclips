@@ -112,6 +112,19 @@ Python restarts alone do NOT update the browser script.
 - **Xavier Re-initialization appears twice** in project list (game quirk or selector issue).
 - **start.ps1 display quirk**: relay + agent both in same terminal. Deferred.
 
+### RESOLVED IN v2.12.10 (AutoClipper/MegaClipper cost-crossover guard was silently dead)
+- **AutoClippers kept being bought even when MegaClippers were cheaper** ✅ (bridge.user.js → REDEPLOY)
+  — live: AutoClipper $7,783 vs MegaClipper $5,072 (24 Megas owned), yet the fast rule kept buying the
+  pricier AutoClipper. The v2.4 cost-crossover guard logic was correct, but its availability check —
+  shared with `autoMegaClippers()` — was `isVisible('megaClipperDiv')`, and that container-div id
+  doesn't resolve in the live game, so `megaUnlocked` was ALWAYS false → the guard never fired (and
+  `autoMegaClippers()` never auto-bought a Mega either; the 24 came from LLM/manual buys). Fix: new
+  `megaClipperUnlocked()` helper gates off the CONFIRMED `btnMakeMegaClipper` button id (checks
+  `offsetParent` for display AND computed `visibility`), used by both the AutoClipper guard and
+  `autoMegaClippers()`. Now once Megas are cheaper, AutoClipper buys are skipped and the cash goes to
+  the cheaper/more-productive MegaClipper. Lesson (again, cf. the v2.6 typo): gate off confirmed
+  button ids verified against live state, NOT guessed container-div ids.
+
 ### RESOLVED IN v2.12.9 (fresh-game stage misdetection — flipped to Stage 2/3 during Stage 1)
 - **`getPhase()` used `compDiv` as the Stage 2 marker, but `compDiv` = "Quantum Computing unlocked"
   (mid-STAGE 1)** ✅ (bridge.user.js → REDEPLOY) — live on a freshly-restarted game the agent first

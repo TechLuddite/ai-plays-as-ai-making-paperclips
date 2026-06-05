@@ -89,6 +89,20 @@
         return el && el.offsetParent !== null;
     }
 
+    // Is the MegaClipper upgrade actually unlocked/available to buy?
+    // Gate off the CONFIRMED button id (btnMakeMegaClipper) rather than guessing a
+    // container div id — the old `isVisible('megaClipperDiv')` check was returning
+    // false even when MegaClippers existed (24 owned), which silently killed the
+    // AutoClipper-vs-MegaClipper cost-crossover guard so AutoClippers kept getting
+    // bought even when MegaClippers were cheaper. Checks both display (offsetParent)
+    // and visibility (which the game may use to hide a locked upgrade, and which
+    // inherits from ancestors). (Bug fix — see CHANGELOG v2.12.10.)
+    function megaClipperUnlocked() {
+        const btn = document.getElementById('btnMakeMegaClipper');
+        if (!btn || btn.offsetParent === null) return false;       // not laid out (display:none up the tree)
+        return window.getComputedStyle(btn).visibility !== 'hidden';
+    }
+
     function clickBtn(id) {
         const el = document.getElementById(id);
         if (el && el.offsetParent !== null) { el.click(); return true; }
@@ -482,7 +496,7 @@
     let lastMegaClipperClick = 0;
 
     function autoMegaClippers() {
-        if (!isVisible('megaClipperDiv')) return;
+        if (!megaClipperUnlocked()) return;
         if (Date.now() - lastMegaClipperClick < 5000) return;
 
         const funds      = getNum('funds');
@@ -743,7 +757,7 @@
         //    skip and let autoMegaClippers() spend the cash instead.
         // 2. Inventory/demand: if we already have a big unsold backlog and demand is
         //    well below the ceiling, more production capacity just deepens the backlog.
-        const megaUnlocked = isVisible('megaClipperDiv');
+        const megaUnlocked = megaClipperUnlocked();
         const megaCost     = getNum('megaClipperCost', Infinity);
         const spoolsAfter  = Math.floor((funds - clipperCost) / wireCost);
 

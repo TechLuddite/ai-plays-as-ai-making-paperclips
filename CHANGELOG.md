@@ -4,6 +4,22 @@ All notable changes to this project are documented here.
 
 ---
 
+## [2.12.10] - 2026-06-05 — Fix AutoClipper/MegaClipper cost-crossover guard (regression of v2.4)
+
+### Fixed
+- **AutoClippers kept being bought even when MegaClippers were cheaper** (`bridge.user.js`) — live:
+  AutoClipper $7,783 vs MegaClipper $5,072 (24 owned), yet the fast rule kept buying the pricier
+  AutoClipper. The v2.4 cost-crossover guard was intact but *silently dead*: both it and
+  `autoMegaClippers()` gated availability on `isVisible('megaClipperDiv')`, and that container-div id
+  doesn't resolve in the live game, so `megaUnlocked` was always false → the "Mega is the better
+  deal" guard never fired (and `autoMegaClippers()` never bought either — the 24 Megas were bought by
+  the LLM/manually). Replaced both checks with a new `megaClipperUnlocked()` helper that gates off the
+  **confirmed** `btnMakeMegaClipper` button id (checking both `display` via `offsetParent` and
+  `visibility`), so it works regardless of the container id or how the game hides a locked upgrade.
+  Now once MegaClippers are cheaper, the AutoClipper buy is skipped and `autoMegaClippers()` spends
+  the cash on the cheaper, far-more-productive MegaClipper. **Tampermonkey REDEPLOY required.**
+  Lesson (again, cf. v2.6): gate off confirmed button ids, not guessed container divs.
+
 ## [2.12.9] - 2026-06-05 — Fix fresh-game stage misdetection (compDiv ≠ Stage 2)
 
 ### Fixed
