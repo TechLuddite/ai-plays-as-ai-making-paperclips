@@ -112,6 +112,19 @@ Python restarts alone do NOT update the browser script.
 - **Xavier Re-initialization appears twice** in project list (game quirk or selector issue).
 - **start.ps1 display quirk**: relay + agent both in same terminal. Deferred.
 
+### RESOLVED IN v2.12.9 (fresh-game stage misdetection — flipped to Stage 2/3 during Stage 1)
+- **`getPhase()` used `compDiv` as the Stage 2 marker, but `compDiv` = "Quantum Computing unlocked"
+  (mid-STAGE 1)** ✅ (bridge.user.js → REDEPLOY) — live on a freshly-restarted game the agent first
+  correctly read Stage 1, then flipped to Stage 2 the instant Quantum Computing was bought, and began
+  emitting Stage-2/late-game actions while still in Stage 1. Root cause: `getPhase()` returned 2 on
+  `isVisible('compDiv')`, but per game_mechanics.md `compDiv` is the QC panel (unlocked in Stage 1),
+  NOT a Stage 2 panel. Meanwhile `getStage2State()` was already gating correctly on
+  `powerDiv`/`factoryDiv`. Fix: `getPhase()` now matches — `spaceDiv`→3, `powerDiv`||`factoryDiv`→2,
+  else 1 (spaceDiv checked first so it still resolves to 3 even if powerDiv persists into Stage 3).
+  Verified NOT the cause: relay does a full state REPLACE (`latest_state = data`, no merge, so no
+  stale `colonized` leak), and the Python `get_stage()` fallback only triggers on keys the bridge
+  sends per-stage. bridge.user.js only — Python untouched, but restart relay+agent after redeploy.
+
 ### CHANGED IN v2.12.8 (ENDGAME reached — protect the final choice)
 - **100% of the universe explored** 🎉 (v2.12.7 colonization worked — owner drove colonized 68%→100%).
   The "Message from the Emperor of Drift" endgame sequence appeared. Added a SAFETY: the agent must

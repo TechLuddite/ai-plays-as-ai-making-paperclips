@@ -255,8 +255,14 @@
     }
 
     function getPhase() {
-        if (isVisible('spaceDiv'))  return 3;
-        if (isVisible('compDiv'))   return 2;
+        // Stage markers MUST match the panels that actually define each stage:
+        //   spaceDiv  = Stage 3 (probes/colonization)
+        //   powerDiv / factoryDiv = Stage 2 (power + manufacturing) — same gate getStage2State() uses
+        // DO NOT use compDiv for Stage 2: compDiv = "Quantum Computing unlocked", which happens
+        // mid-STAGE 1, so it flipped the agent to Stage 2 (and Stage-2/3 behavior) while still in
+        // Stage 1 the moment QC was bought on a fresh game. (Bug fix.)
+        if (isVisible('spaceDiv'))                            return 3;
+        if (isVisible('powerDiv') || isVisible('factoryDiv')) return 2;
         return 1;
     }
 

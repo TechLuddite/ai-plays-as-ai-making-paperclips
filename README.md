@@ -348,7 +348,15 @@ It's a work in progress. But it works.
 
 ## Version History
 
-**v2.12.8 (current) — 🎉 the first complete run: 100% of the universe explored**
+**v2.12.9 (current) — fix fresh-game stage misdetection**
+
+On a freshly-restarted game the agent correctly read Stage 1, then flipped to Stage 2 (and began
+taking Stage-2/late-game actions) the instant Quantum Computing was bought. The browser bridge's
+`getPhase()` was using the Quantum Computing panel (`compDiv`, which unlocks mid-Stage 1) as its
+Stage 2 marker. Fixed it to use the real Stage 2 panels (`powerDiv`/`factoryDiv`); `spaceDiv` still
+marks Stage 3. Confirmed resolved live. (`bridge.user.js` — needed a Tampermonkey redeploy.)
+
+**v2.12.8 — 🎉 the first complete run: 100% of the universe explored**
 
 The agent played autonomously through **all three stages and colonized the entire universe** (Stage 1
 → 2 → 3 → 100%), reaching the game's endgame — the "Message from the Emperor of Drift" and its final

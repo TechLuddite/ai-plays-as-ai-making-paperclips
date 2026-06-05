@@ -4,6 +4,19 @@ All notable changes to this project are documented here.
 
 ---
 
+## [2.12.9] - 2026-06-05 — Fix fresh-game stage misdetection (compDiv ≠ Stage 2)
+
+### Fixed
+- **`getPhase()` flipped Stage 1 → Stage 2 the moment Quantum Computing was bought** (`bridge.user.js`)
+  — on a freshly-restarted game the agent correctly read Stage 1, then jumped to Stage 2 (and started
+  taking Stage-2/late-game actions) as soon as QC unlocked. Cause: `getPhase()` used
+  `isVisible('compDiv')` as the Stage 2 marker, but `compDiv` is the **Quantum Computing panel,
+  unlocked mid-Stage 1** — not a Stage 2 panel. Fixed to use the real Stage 2 panels
+  (`powerDiv`/`factoryDiv`, matching `getStage2State()`); `spaceDiv` → Stage 3 is still checked first.
+  Verified *not* the cause: the relay does a full state replace (no stale `colonized` leak) and the
+  Python `get_stage()` fallback only triggers on keys the bridge sends per-stage. **Tampermonkey
+  REDEPLOY required.** Confirmed resolved in live testing.
+
 ## [2.12.8] - 2026-06-05 — 🎉 Endgame reached (100% of the universe explored)
 
 ### Added
