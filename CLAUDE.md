@@ -92,34 +92,61 @@ Python restarts alone do NOT update the browser script.
 - Stage 2: tournaments fully working (Yomi flowing, investment engine auto-upgrading to Level 3+);
   production starvation, domain output, project queue all resolved (v2.3); domain grading (v2.4);
   Power & manufacturing engine (solar/batteries/drones/factories) auto-built (v2.7)
-- Stage 3 (space exploration, probe design): actions/prompt/OBS fully wired (v2.11), BUT the LLM
-  STALLS at the bootstrap — `wait` every tick, fixated on stale Stage-2 memory/processor reasoning,
-  never launches probes (colonized stuck at 0%). See Known Issues (HIGH) + memory
-  `stage3_llm_stall_deepdive.md`. Next session: deep dive to fix it LLM-side (no JS).
+- Stage 3 (space exploration, probe design): actions/prompt/OBS fully wired (v2.11); the bootstrap
+  STALL is FIXED LLM-side in v2.12 (stage-aware OBS/prompt + history reset on stage change + a
+  deterministic probe-design advisor, all Python-only — no redeploy) — PENDING LIVE TEST.
+  See "RESOLVED IN v2.12" below.
 - Best run: 13.5B+ clips, Stage 2, investment engine Level 3, Yomi accumulating, Marketing Level 20
 
 ## Known Issues
 
 ### ACTIVE — HIGH PRIORITY
-- **Stage 3 LLM-driven bootstrap STALLS** (`agent.py` — prompt/OBS, not bridge) — Space Exploration
-  launched (v2.11 wired all probe actions: `launch_probe`, `increase_probe_trust`,
-  `increase_max_trust`, the 8 stat allocations, plus OBS flags + a wiki opening-sequence prompt),
-  but the game is FROZEN at colonized 0% / 0 probes / trust 0/0. The LLM emits `wait` every tick
-  with a byte-identical, Stage-2-ANCHORED thought: *"Memory 382, processors 1294 >> memory. Need to
-  add_memory urgently. No new projects available and no probes launched."* It even notices "no
-  probes launched" but never acts — it's stuck on the now-irrelevant memory/processor narrative and
-  never engages the probe domain. The actions exist; the LLM's INPUTS are steering it wrong.
-  CONSTRAINT (owner, explicit): keep Stage 3 **LLM-driven** — do NOT switch to a JS auto-player or a
-  hard-override backstop for the probe bootstrap. Fix the LLM's inputs (stage-aware prompt/OBS,
-  history reset on phase change, suppress stale Stage-1/2 flags in Stage 3, maybe qwen3.6) so it
-  engages. NEXT SESSION = deep dive: see memory `stage3_llm_stall_deepdive.md` for the full
-  hypotheses + fix directions + investigation steps.
+- *(none — the Stage 3 bootstrap stall is addressed in v2.12; see "RESOLVED IN v2.12". Reopen if
+  live testing shows the LLM still won't launch probes.)*
 
 ### ACTIVE — LOW PRIORITY
 - **Dashboard needs further refinement** — the v2.8 stage-grouped layout is a first pass; owner
   will scope specific dashboard changes in a later request. Placeholder until then.
 - **Xavier Re-initialization appears twice** in project list (game quirk or selector issue).
 - **start.ps1 display quirk**: relay + agent both in same terminal. Deferred.
+
+### RESOLVED IN v2.12
+- **Stage 3 LLM bootstrap stall — FIXED via stage-aware inputs** ✅ (PENDING LIVE TEST) — the LLM
+  was frozen at colonized 0% / 0 probes, emitting `wait` every tick while quoting a stale Stage-2
+  thought ("Memory 382, processors 1294 >> memory, add_memory urgently"). Root cause (confirmed from
+  agent.log): `format_state()` kept showing Stage-2 memory/processor fields in Stage 3 AND fired two
+  NAIVE flags — `processors` "⚠ WAY AHEAD OF MEMORY — add_memory urgently" and the `trust`
+  "ADD MEMORY" hint — that bypass `_mem_proc_ladder` and are simply WRONG once memory passes its
+  250-300 cap (in Stage 3, processors > memory is CORRECT). Those loud wrong flags drowned out the
+  already-correct swarmGifts "add_processor" advice, so the model defaulted to `wait`; stale thoughts
+  also re-anchored via `history`. Fix is LLM-side ONLY (owner constraint: no JS auto-player, no
+  hard-override backstop — these are richer INPUTS; the LLM still emits every action). Six parts, all
+  `agent.py` + `config.json` (NO bridge change → NO Tampermonkey redeploy; restart relay+agent):
+  1. `get_stage(state)` — 1/2/3 from the bridge `phase` field (+ colonized/portValue fallback).
+  2. **Stage-aware OBS** — Stage 3 uses a PROBE-FIRST whitelist (`STAGE3_KEYS`): drops Stage-1
+     business + Stage-2 power/manufacturing clutter, but deliberately KEEPS memory/processors/
+     creativity/swarmGifts as clearly SECONDARY (wiki-backed, owner's call: memory tops out at
+     250-300, then processors farm the 400k creativity for Name the Battles 225k + Strategic
+     Attachment 175k). The wrong proc/trust "add_memory urgently" flags are gated OFF in Stage 3 and
+     replaced with correct guidance; added Stage-3 creativity-target + yomi-funds-probe-trust hints.
+  3. **Loud Stage-3 SYSTEM_PROMPT header** (`STAGE_HEADERS` / `build_system_prompt`) prepended each
+     tick: "YOU ARE IN STAGE 3 … ignore memory/processors/clips/swarm … follow the PROBE PLAN …
+     don't wait while probeTotal is 0." `ask_ollama()` now takes a `system=` arg.
+  4. **History + loop-tracker reset on STAGE TRANSITION** (reuses the new-game pattern; `prev_phase`)
+     so prior-stage reasoning stops re-anchoring the model.
+  5. **Stage-3 loop-breaker tip** points at increase_probe_trust → haz/rep → launch_probe (not the
+     generic "is there a project?" nudge).
+  6. **NEW deterministic probe-design advisor** `_probe_design_advice()` (mirrors `_mem_proc_ladder`)
+     — emits one `►► PROBE PLAN → <action>` OBS line/tick driving the wiki opening: buy trust→20 →
+     Haz 6 → Rep 6 → launch_probe → Speed/Nav (keep Speed≥Nav) → Combat 6-8 when Drifters appear
+     (increase_max_trust w/ Honor if maxed). Targets are config.json tunables: `probe_trust_target`,
+     `probe_haz_target`, `probe_rep_target`, `probe_speed_target`, `probe_nav_target`,
+     `probe_combat_target`, `probe_aux_max`. Probe-design is "particular" (an 8-stat budget problem
+     under value-drift cost) — too hard for a small model from prose alone, hence the advisor.
+  Unit-tested: full opening sequence advances correctly; Stage-1/2 OBS unchanged (no regression).
+  FOLLOW-UP after live test: optional late-game rebalance (lower Rep, raise Speed/Nav once
+  colonization is stable); try qwen3.6 if qwen2.5 still wobbles. See memory game_mechanics.md
+  (Stage 3 probe strategy) + stage3_llm_stall_deepdive.md.
 
 ### RESOLVED IN v2.9
 - **Stage 2 Swarm Gifts now LLM-driven** ✅ — Swarm Gifts are the Stage 2 "trust" (fund

@@ -316,6 +316,33 @@ RULES:
    critical/auto). It grades auto domains only — it never causes an action.
 """
 
+# A short, LOUD per-stage header prepended to SYSTEM_PROMPT each tick. The full prompt
+# covers all three stages at once (~15k chars); a small local model reading it in Stage 3
+# kept anchoring on the Stage-1/2 memory/processor narrative and never engaged the probe
+# domain. This header re-focuses it on the active stage BEFORE it reads the long job list.
+STAGE_HEADERS = {
+    3: """━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+⚠ YOU ARE IN STAGE 3 (SPACE EXPLORATION). READ THIS FIRST.
+Your ONE goal now is to colonize the universe with self-replicating Von Neumann probes —
+drive `colonized` to 100%. Memory, processors, clips, swarm gifts, investments and Stage-2
+manufacturing NO LONGER DRIVE the game; do NOT reason about "memory vs processors" or
+"add_memory urgently" — that thinking is from earlier stages and is now WRONG (in Stage 3,
+having more processors than memory is correct).
+
+The OBS gives you a `►► PROBE PLAN → <action>` line each tick — it is the single best next
+probe move (buy trust → set Hazard 6 → set Replication → launch_probe → speed/nav → combat).
+Your Probes Action line should normally be exactly that PROBE PLAN action. If probeTotal is 0,
+your job is to get trust, allocate Hazard+Replication, and launch_probe — NOT to wait.
+Do NOT emit `wait`/`nothing` for Probes while there is a PROBE PLAN action to take.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+""",
+}
+
+def build_system_prompt(stage):
+    """Prepend the active stage's loud header (if any) to the shared SYSTEM_PROMPT."""
+    return STAGE_HEADERS.get(stage, "") + SYSTEM_PROMPT
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def ts():
@@ -330,6 +357,28 @@ def safe_float(val, fallback=999.0):
         return float(cleaned) if cleaned else fallback
     except (ValueError, TypeError):
         return fallback
+
+def get_stage(state):
+    """Return the current game stage as an int: 1, 2, or 3.
+
+    The bridge already computes this in getPhase() (spaceDiv→3, compDiv→2, else 1) and
+    sends it as `phase`, so we trust that first. Fall back to state signals if it's
+    missing or malformed: `colonized` only exists in Stage 3, and portValue/performance
+    appear in Stage 2. Knowing the stage lets us focus the prompt and OBS on what
+    actually matters NOW — the core fix for the Stage 3 anchoring stall (the LLM kept
+    reasoning about Stage-2 memory/processors after reaching Stage 3)."""
+    p = state.get('phase')
+    try:
+        p = int(p)
+        if p in (1, 2, 3):
+            return p
+    except (ValueError, TypeError):
+        pass
+    if state.get('colonized') not in (None, ''):
+        return 3
+    if state.get('portValue', '') or state.get('performance') is not None:
+        return 2
+    return 1
 
 def get_state():
     try:
@@ -359,6 +408,29 @@ def post_action_queue(queue, domain_decisions=None, overrides_str=""):
         requests.post(f"{RELAY_URL}/action", json=payload, timeout=3)
     except Exception as e:
         print(f"[{ts()}] ⚠ Could not post action queue: {e}")
+
+# Stage 3 shows a PROBE-FIRST, focused view. Memory/processors/creativity/swarmGifts stay
+# visible (they remain a real secondary concern — wiki: memory to 250-300, then processors
+# farm the 400k creativity for Name the Battles + Strategic Attachment), but the Stage-1
+# business fields and Stage-2 power/manufacturing clutter are dropped so the probe domain
+# can't get lost. This is the heart of the anti-anchoring fix: don't feed the model the
+# stale Stage-2 numbers it kept fixating on. (Stages 1 & 2 keep the full key list below.)
+STAGE3_KEYS = [
+    'phase',
+    # PROBES — the primary Stage 3 domain, shown first.
+    'colonized', 'probeTotal', 'probesLaunched', 'probesBorn',
+    'probeTrust', 'maxTrust', 'probeTrustCost', 'maxTrustCost',
+    'drifters', 'driftersKilled',
+    'probeSpeed', 'probeNav', 'probeRep', 'probeHaz',
+    'probeFac', 'probeHarv', 'probeWire', 'probeCombat',
+    # Resources that fund the probe effort.
+    'yomi', 'honor', 'clips',
+    # SECONDARY — still relevant (creativity for Name the Battles / Strategic Attachment;
+    # memory capped at 250-300 then surplus gifts -> processors). NOT the priority.
+    'memory', 'processors', 'creativity',
+    'swarmGifts', 'swarmStatus',
+    'availableProjects',
+]
 
 def format_state(state):
     if not state:
@@ -390,9 +462,22 @@ def format_state(state):
         'probeFac', 'probeHarv', 'probeWire', 'probeCombat',
         'availableProjects',
     ]
+    stage = get_stage(state)
+    if stage == 3:
+        keys = STAGE3_KEYS
+
     lines = []
     proc = safe_float(state.get('processors'), -1)
     mem  = safe_float(state.get('memory'),     -1)
+
+    # Stage 3: lead with the deterministic probe-design recommendation so the LLM sees
+    # the single best next probe action before anything else (mirrors the swarm/trust hints).
+    if stage == 3:
+        p_action, p_reason = _probe_design_advice(state)
+        if p_action:
+            lines.append(f"  ►► PROBE PLAN → {p_action}   ({p_reason})")
+        else:
+            lines.append("  ►► PROBE PLAN → nothing   (probe stats on target this tick)")
 
     for k in keys:
         v = state.get(k)
@@ -425,22 +510,49 @@ def format_state(state):
                     flag = f" → add_memory or add_processor [{int(available_trust)} to spend]"
             else:
                 flag = " (fully allocated — none to spend)"
-        if k == 'processors' and proc > mem + 1:
-            flag = f" ⚠ WAY AHEAD OF MEMORY ({int(mem)}) — add_memory urgently"
+        if k == 'processors':
+            # In Stage 3 having MORE processors than memory is CORRECT (memory caps at
+            # 250-300, processors keep growing to farm creativity). The old naive
+            # "proc > mem -> add_memory urgently" flag was exactly what mis-steered the
+            # LLM into the Stage-3 stall, so it only fires in Stages 1-2 now.
+            if stage == 3:
+                flag = " (Stage 3: processors > memory is CORRECT — they farm creativity)"
+            elif proc > mem + 1:
+                flag = f" ⚠ WAY AHEAD OF MEMORY ({int(mem)}) — add_memory urgently"
         if k == 'memory':
             ops_cap = int(fv) * 1000 if fv > 0 else 0
             flag = f" (ops cap: {ops_cap:,})"
-        if k == 'yomi':
-            # Pre-compute the yomi vs upgrade-cost comparison so the LLM stops
-            # misreading it (it was claiming "yomi > cost" when yomi was below).
-            upgrade_cost = safe_float(state.get('investUpgradeCost'), -1)
-            if upgrade_cost > 0:
-                if fv >= upgrade_cost:
-                    flag = f" ✓ ≥ upgrade cost {int(upgrade_cost):,} — upgrade_investment AVAILABLE"
+            if stage == 3:
+                if fv >= 250:
+                    flag += " — at/over the Stage-3 max (250-300); surplus gifts -> processors"
                 else:
-                    short_by = int(upgrade_cost - fv)
-                    flag = (f" ✗ BELOW upgrade cost {int(upgrade_cost):,} "
-                            f"(short by {short_by:,}) — cannot upgrade yet")
+                    flag += " — Stage 3 tops out at 175 (OODA Loop) / 250-300 (honor projects)"
+        if k == 'yomi':
+            if stage == 3:
+                # Stage 3: yomi fuels increase_probe_trust, not investment upgrades.
+                tc = safe_float(state.get('probeTrustCost'), -1)
+                if tc > 0:
+                    if fv >= tc:
+                        flag = f" ✓ funds increase_probe_trust (next costs {int(tc):,})"
+                    else:
+                        flag = f" ✗ below probe-trust cost {int(tc):,} (short by {int(tc - fv):,})"
+            else:
+                # Pre-compute the yomi vs upgrade-cost comparison so the LLM stops
+                # misreading it (it was claiming "yomi > cost" when yomi was below).
+                upgrade_cost = safe_float(state.get('investUpgradeCost'), -1)
+                if upgrade_cost > 0:
+                    if fv >= upgrade_cost:
+                        flag = f" ✓ ≥ upgrade cost {int(upgrade_cost):,} — upgrade_investment AVAILABLE"
+                    else:
+                        short_by = int(upgrade_cost - fv)
+                        flag = (f" ✗ BELOW upgrade cost {int(upgrade_cost):,} "
+                                f"(short by {short_by:,}) — cannot upgrade yet")
+        if k == 'creativity' and stage == 3:
+            # Creativity is the Stage-3 bottleneck for the two key projects.
+            if fv >= 400_000:
+                flag = " ✓ ≥400k — Name the Battles + Strategic Attachment covered"
+            else:
+                flag = " — aim 400k: Name the Battles 225k + Strategic Attachment 175k (processors farm it)"
         if k == 'portValue' and fv > 0:
             flag = " ← grow via invest_deposit / upgrade_investment"
         if k == 'swarmStatus' and 'disorg' in str(v).lower():
@@ -490,9 +602,9 @@ def format_state(state):
                 avail = total - used
                 mx = safe_float(state.get('maxTrust'), total)
                 if avail >= 1:
-                    flag = f" → {int(avail)} trust to ALLOCATE: raise_probe_haz (→6) / raise_probe_rep (→4+) / speed"
+                    flag = f" → {int(avail)} point(s) FREE to allocate — follow the PROBE PLAN above"
                 elif total < mx:
-                    flag = f" → increase_probe_trust for more (have {int(total)}/{int(mx)} max)"
+                    flag = f" → no free points; increase_probe_trust ({int(total)}/{int(mx)} max) — see PROBE PLAN"
             except (ValueError, ZeroDivisionError):
                 pass
         if k == 'maxStorage':
@@ -529,6 +641,101 @@ def _mem_proc_ladder(mem, proc):
     if proc * 2 < mem:
         return 'add_processor', f"processors trailing (proc={proc}, mem={mem}) — toward cap {proc_cap}"
     return 'add_memory', f"rush memory to {target} (mem={mem}, proc={proc})"
+
+def _probe_int(state, key):
+    """Parse a probe-stat display ('5', '5 ', '—', '') into an int level, default 0."""
+    return int(safe_float(state.get(key), 0))
+
+def _probe_design_advice(state):
+    """Stage 3 Von Neumann probe-design advisor — the deterministic counterpart to
+    `_mem_proc_ladder()`, but for the 8-stat Probe Trust budget. Returns (action, reason)
+    naming the SINGLE best next probe action this tick, or (None, None) if nothing is
+    pressing. The LLM still emits the action — this only sharpens its input (same pattern
+    as the trust/swarm OBS hints), so Stage 3 stays LLM-driven, not a JS auto-player.
+
+    Strategy (wiki-verified, see memory/game_mechanics.md — Stage 3 opening sequence):
+      Probe Trust is one shared budget (used/total; total capped at maxTrust, 20 before
+      Name the Battles). Each raise_probe_* spends 1 available point; lower_* frees 1.
+      Priority ladder, highest unmet step first:
+        1. BUY TRUST to the opening cap (20) while yomi allows — you have millions.
+        2. HAZARD first (→6): protects the swarm from entropic losses before launch.
+        3. SELF-REPLICATION (→4+): this is what grows the swarm after launch.
+        4. LAUNCH the initial batch once haz/rep are set and probeTotal is 0.
+        5. SPEED / EXPLORATION(nav) for matter access (keep Speed >= Nav for OODA combat).
+        6. COMBAT (→6-8) once Drifters appear; if no free points, raise the cap with Honor.
+      Fac/Harv/Wire stay at <=1 — a big swarm self-provides (wiki). Over-buying trust
+      raises value drift (more Drifters later), so the opening target is the cap, not max."""
+    # Only advise in Stage 3 — the space domain sends `colonized` (e.g. "0%") only then.
+    if state.get('colonized') in (None, ''):
+        return None, None
+
+    TRUST_TARGET  = int(_cfg.get("probe_trust_target", 20))
+    HAZ_TARGET    = int(_cfg.get("probe_haz_target",    6))
+    REP_TARGET    = int(_cfg.get("probe_rep_target",    6))
+    SPEED_TARGET  = int(_cfg.get("probe_speed_target",  4))
+    NAV_TARGET    = int(_cfg.get("probe_nav_target",    4))
+    COMBAT_TARGET = int(_cfg.get("probe_combat_target", 8))
+    AUX_MAX       = int(_cfg.get("probe_aux_max",       1))
+
+    used  = int(safe_float(state.get('probeTrustUsed'),  0))
+    total = int(safe_float(state.get('probeTrustTotal'), 0))
+    mx    = int(safe_float(state.get('maxTrust'),        TRUST_TARGET))
+    avail = total - used
+    yomi  = safe_float(state.get('yomi'), 0)
+    trust_cost = safe_float(state.get('probeTrustCost'), 0)
+
+    haz    = _probe_int(state, 'probeHaz')
+    rep    = _probe_int(state, 'probeRep')
+    speed  = _probe_int(state, 'probeSpeed')
+    nav    = _probe_int(state, 'probeNav')
+    combat = _probe_int(state, 'probeCombat')
+    probes   = safe_float(state.get('probeTotal'), 0)
+    drifters = safe_float(state.get('drifters'),   0)
+
+    # 1) BUY TRUST toward the opening cap while we have points to gain and yomi to spend.
+    buy_cap = min(TRUST_TARGET, mx)
+    if total < buy_cap and (trust_cost <= 0 or yomi >= trust_cost):
+        return 'increase_probe_trust', (f"buy Probe Trust {total}/{buy_cap} "
+                                        f"(cost {int(trust_cost):,} yomi — you have plenty)")
+
+    # Combat is urgent the moment Drifters appear — protect the swarm from losses.
+    if drifters > 0 and combat < COMBAT_TARGET:
+        if avail >= 1:
+            return 'raise_probe_combat', (f"Drifters present ({int(drifters):,}); "
+                                          f"Combat {combat}->{COMBAT_TARGET} to win battles")
+        # No free points but combat needed — raise the cap with Honor (comes in abundance),
+        # but only when Honor can actually afford it (else the button is disabled).
+        honor    = safe_float(state.get('honor'), 0)
+        max_cost = safe_float(state.get('maxTrustCost'), 0)
+        if total >= mx and max_cost > 0 and honor >= max_cost:
+            return 'increase_max_trust', (f"Combat needs points but trust maxed ({total}/{mx}); "
+                                          f"increase_max_trust ({int(max_cost):,} Honor) for more room")
+
+    # 2) HAZARD first — guard the swarm before anything else grows.
+    if avail >= 1 and haz < HAZ_TARGET:
+        return 'raise_probe_haz', f"Haz {haz}->{HAZ_TARGET} (protect probes from losses) [{avail} free]"
+
+    # 3) SELF-REPLICATION — the engine of swarm growth.
+    if avail >= 1 and rep < REP_TARGET:
+        return 'raise_probe_rep', f"Rep {rep}->{REP_TARGET} (grow the swarm) [{avail} free]"
+
+    # 4) LAUNCH the initial batch once haz/rep are set and nothing is flying yet.
+    if probes <= 0 and haz >= min(HAZ_TARGET, 5) and rep >= min(REP_TARGET, 4):
+        return 'launch_probe', "haz/rep set, probeTotal 0 — launch the initial probe batch"
+
+    # 5) MATTER — Speed/Exploration. Keep Speed >= Nav (OODA combat survival).
+    if avail >= 1 and speed < SPEED_TARGET and speed <= nav:
+        return 'raise_probe_speed', f"Speed {speed}->{SPEED_TARGET} (explore; keep Speed>=Nav) [{avail} free]"
+    if avail >= 1 and nav < NAV_TARGET:
+        return 'raise_probe_nav', f"Nav {nav}->{NAV_TARGET} (matter access) [{avail} free]"
+    if avail >= 1 and speed < SPEED_TARGET:
+        return 'raise_probe_speed', f"Speed {speed}->{SPEED_TARGET} (explore) [{avail} free]"
+
+    # 6) Spare points with all targets met → push replication for faster colonization.
+    if avail >= 1:
+        return 'raise_probe_rep', f"spare {avail} trust — extra Rep to accelerate colonization"
+
+    return None, None
 
 def check_trust_action(state):
     """
@@ -573,12 +780,12 @@ def is_emergency(state):
     wire_buyer = state.get('wireBuyerOn', False)
     return wire <= 0 and funds < 5 and not wire_buyer
 
-def ask_ollama(prompt):
+def ask_ollama(prompt, system=SYSTEM_PROMPT):
     try:
         r = requests.post(OLLAMA_URL, json={
             "model":   MODEL,
             "prompt":  prompt,
-            "system":  SYSTEM_PROMPT,
+            "system":  system,
             "stream":  False,
             "options": {"temperature": 0.2, "num_predict": 500}
         }, timeout=60)
@@ -819,6 +1026,7 @@ def run():
     print(f"[{ts()}] ✓ Connected — starting agent loop\n")
 
     prev_clips = 0  # used to detect when a new game has been started
+    prev_phase = None  # used to detect a stage transition (e.g. Stage 2 -> Stage 3)
     withdraw_cooldown = 0  # ticks remaining where deposit is suppressed after a withdraw
     swarm_sync_cooldown = 0  # ticks to wait after a sync before checking disorganization again
     space_explore_seen = 0  # ticks Space Exploration has been available but unbought (LLM-first backstop)
@@ -842,6 +1050,18 @@ def run():
             domain_loop_tracker.clear()
             domain_loop_warnings = ""
         prev_clips = curr_clips
+
+        # Detect a STAGE TRANSITION (e.g. Stage 2 -> Stage 3). The rolling history is full of
+        # the previous stage's reasoning (memory/processor/swarm thoughts), which re-anchors
+        # the model and was a key cause of the Stage 3 bootstrap stall. Clearing it on the
+        # transition lets the new stage's prompt/OBS steer the model fresh.
+        stage = get_stage(state)
+        if prev_phase is not None and stage != prev_phase:
+            print(f"[!!!] STAGE TRANSITION ({prev_phase} → {stage}) — clearing history to drop stale reasoning")
+            history.clear()
+            domain_loop_tracker.clear()
+            domain_loop_warnings = ""
+        prev_phase = stage
 
         divider()
         print(f"[{ts()}] TICK {tick}")
@@ -1009,8 +1229,8 @@ def run():
         )
 
         t0 = time.time()
-        print(f"[{ts()}] Querying {MODEL}…")
-        raw = ask_ollama(prompt)
+        print(f"[{ts()}] Querying {MODEL}… (stage {stage})")
+        raw = ask_ollama(prompt, system=build_system_prompt(stage))
         elapsed_ms = int((time.time() - t0) * 1000)
 
         if not raw:
@@ -1195,7 +1415,14 @@ def run():
                 repeated = actions[-1]
                 run = sum(1 for a in reversed(actions) if a == repeated)
                 if repeated in ('wait', 'nothing'):
-                    tip = "Is there a project that just became affordable? A probe stat to adjust? Or confirm 'nothing' is correct."
+                    if stage == 3:
+                        # In Stage 3 a wait-loop is the classic bootstrap stall — point the
+                        # model straight at the probe actions, not the generic project tip.
+                        tip = ("Follow the ►► PROBE PLAN line: if probeTotal is 0 you must "
+                               "increase_probe_trust → raise_probe_haz/raise_probe_rep → "
+                               "launch_probe. Do NOT keep waiting.")
+                    else:
+                        tip = "Is there a project that just became affordable? A probe stat to adjust? Or confirm 'nothing' is correct."
                 else:
                     tip = f"Is '{repeated}' still the right call, or has the situation changed?"
                 warn_lines.append(

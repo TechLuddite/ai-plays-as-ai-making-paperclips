@@ -9,5 +9,14 @@
 
   "_comment_trust": "Memory/processor allocation. memory_milestones = the ops-ceiling walls the agent rushes memory toward (memory x 1000 = ops cap), verified from the game wiki: 20=Stage1 cluster, 70=HypnoDrones, 120=Space Exploration, 175=OODA Loop, 250/300=Stage3 endgame. trust_proc_floor = minimum processors kept for ops regen before pouring trust into memory.",
   "memory_milestones": [20, 70, 120, 175, 250, 300],
-  "trust_proc_floor":  5
+  "trust_proc_floor":  5,
+
+  "_comment_probe": "Stage 3 Von Neumann probe-design targets (wiki-verified, see memory/game_mechanics.md). The probe-design OBS advisor recommends ONE raise/lower/launch/buy action per tick to drive these target stat levels under the shared Probe Trust budget. probe_trust_target = how many total Probe Trust points to buy in the opening (20 = the cap before Name the Battles, 'enough to cover the universe'; higher needs Honor + increase_max_trust). haz/rep/speed/nav/combat = target levels per stat; combat stays 0 until Drifters appear. fac/harv/wire kept at probe_aux_max (a big swarm self-provides). Over-buying trust raises value drift, so the opening target is the cap, not the max.",
+  "probe_trust_target": 20,
+  "probe_haz_target":    6,
+  "probe_rep_target":    6,
+  "probe_speed_target":  4,
+  "probe_nav_target":    4,
+  "probe_combat_target": 8,
+  "probe_aux_max":       1
 }

@@ -348,14 +348,34 @@ It's a work in progress. But it works.
 
 ## Version History
 
-**v2.11 (current) — reached Stage 3 (the endgame)**
+**v2.12 (current) — unsticking the Stage 3 bootstrap (stage-aware inputs)**
+
+v2.11 reached Stage 3 but the LLM *stalled* at the bootstrap: it stayed anchored to Stage-2
+memory/processor reasoning and never launched a probe (colonized stuck at 0%). The cause was its
+**inputs**, not missing code — the observation kept showing Stage-2 fields in Stage 3 and fired two
+"add_memory urgently" flags that are flat wrong once memory passes its 250–300 cap (in Stage 3,
+having *more* processors than memory is correct). v2.12 fixes it entirely LLM-side (no JS
+auto-player, no override — the model still chooses every action):
+
+- **Stage-aware observation** — Stage 3 shows a probe-first view and drops the stale Stage-1/2
+  clutter, while keeping memory/processors/creativity as a clearly *secondary* concern (the wiki
+  still wants memory to 250–300, then processors to farm the 400k creativity for two key projects).
+- **A loud "you are in Stage 3" prompt header**, **history reset on the stage transition**, and a
+  **Stage-3 loop-breaker** that points straight at the probe actions.
+- **A deterministic probe-design advisor** that prints one `►► PROBE PLAN → <action>` line each
+  tick — buy Probe Trust → Hazard 6 → Replication → launch the swarm → Speed/Nav → Combat when
+  Drifters appear — turning the tricky 8-stat trust-budget allocation into a single clear next step
+  the model can follow. Targets are tunable in `config.json`.
+
+**Python-only — no Tampermonkey redeploy** (the probe actions were already wired in v2.11). Restart
+the relay and agent to apply.
+
+**v2.11 — reached Stage 3 (the endgame)**
 
 The agent played through all of Stage 2 autonomously and launched **Space Exploration**, entering
 Stage 3 (self-replicating Von Neumann probes colonizing the universe). v2.11 wired the Stage 3
 actions — `launch_probe`, `increase_probe_trust`, `increase_max_trust`, and the eight probe-stat
-allocations — with a wiki-based opening-sequence prompt. **Known issue:** the LLM currently *stalls*
-at the Stage 3 bootstrap (it stays anchored to Stage-2 reasoning and doesn't launch probes); fixing
-that LLM-side is the next focus. **Requires Tampermonkey redeploy.**
+allocations — with a wiki-based opening-sequence prompt. **Required Tampermonkey redeploy.**
 
 The v2.10.x series got there: **endgame scaling** (factories → 200, drones → 50k with ratio-safe
 batch building), **clip-cost project parsing** (Self-correcting Supply Chain's 1000×-per-factory
