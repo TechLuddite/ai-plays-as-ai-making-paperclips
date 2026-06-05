@@ -348,7 +348,17 @@ It's a work in progress. But it works.
 
 ## Version History
 
-**v2.12.10 (current) — fix AutoClipper/MegaClipper cost-crossover guard**
+**v2.12.11 (current) — hold tournaments while a project is claimable**
+
+Tournaments ran non-stop and drained ops that should have gone to projects: a project costing 90–100%
+of the ops cap could never be afforded, because tournaments fire at 90% of cap and spend the ops
+first. Both ops-drainers (the bridge's manual tournament fast-rule and the override that kept the
+game's AutoTourney on) now stand down while a project the agent will auto-buy is affordable once ops
+fill to the cap — letting ops accumulate to claim the project, then resuming tournaments for Yomi once
+none remain. This also matches the wiki's "switch AutoTourney off to save ops for projects."
+(`bridge.user.js` + `agent.py` — needed a Tampermonkey redeploy + agent restart.)
+
+**v2.12.10 — fix AutoClipper/MegaClipper cost-crossover guard**
 
 The agent kept buying AutoClippers even when MegaClippers were cheaper (live: AutoClipper $7,783 vs
 MegaClipper $5,072). The v2.4 cost-crossover guard was logically correct but silently dead: it (and

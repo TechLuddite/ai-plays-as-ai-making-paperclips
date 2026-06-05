@@ -44,7 +44,10 @@ Flask Relay → browser polls GET /action (includes thought) → executes click
 - Price management, Marketing upgrades
 - Project priority queue, emergency wire recovery
 - Tournament strategy enforcement (stratPicker='0' enforced every 50ms)
-- Auto-run tournaments when ops ≥ 90% cap (`autoRunTournament`, 500ms interval)
+- Auto-run tournaments when ops ≥ 90% cap (`autoRunTournament`, 500ms interval) — but HELD while a
+  claimable `PROJECT_PRIORITY` ops-project is affordable-at-cap (`opsProjectWaiting()`, v2.12.11), so
+  ops fill to buy the project instead of draining on tournaments. (The agent.py override likewise
+  pauses the game's built-in AutoTourney via the `opsProjectWaiting` state flag.)
 - Stage 2 power & manufacturing (`autoStage2Manufacturing`, 800ms) — builds Solar Farms,
   Battery Towers, Harvester/Wire Drones, Clip Factories from the clip surplus; power-first
   (keeps performance 100%), golden-ratio drones, affordability gated on `!btn.disabled`
@@ -111,6 +114,24 @@ Python restarts alone do NOT update the browser script.
   will scope specific dashboard changes in a later request. Placeholder until then.
 - **Xavier Re-initialization appears twice** in project list (game quirk or selector issue).
 - **start.ps1 display quirk**: relay + agent both in same terminal. Deferred.
+
+### RESOLVED IN v2.12.11 (tournaments drained ops that should have gone to claimable projects)
+- **Tournaments ran non-stop, starving projects that were claimable once ops filled to the cap** ✅
+  (bridge.user.js + agent.py → REDEPLOY + restart agent) — live: ops 17,545/21,000, AutoTourney ON. A
+  project costing 90–100% of the ops cap can NEVER be afforded because tournaments fire at 90% of cap
+  and drain ops first. TWO ops-drainers ignored waiting projects: the bridge `autoRunTournament()`
+  fast-rule AND the `agent.py` override that kept the game's built-in AutoTourney unconditionally ON.
+  Fix: new bridge helper `opsProjectWaiting()` (true when a `PROJECT_PRIORITY` ops-project is
+  affordable once ops fill to the cap — `cost <= maxOps` — but not bought yet; scans the DOM directly
+  incl. disabled/greyed buttons so it sees unaffordable-but-revealed projects, which getProjects()
+  filters out). While it holds: `autoRunTournament()` skips, and the bridge sends an `opsProjectWaiting`
+  state flag so the agent.py AutoTourney override PAUSES AutoTourney (toggle OFF) instead of forcing it
+  ON — re-enabling only when no claimable ops-project remains. Projects costing MORE than maxOps need
+  more memory first, so they don't block tournaments (ops sit at the cap, AutoTourney mints Yomi until
+  memory grows). Matches the wiki ("switch AutoTourney OFF to save ops for projects"). NOTE: only
+  PROJECT_PRIORITY projects are protected — a revealed ops-project NOT in that list (e.g. "New
+  Strategy: B100") is neither auto-bought nor blocks tournaments; add it to PROJECT_PRIORITY if it
+  should be claimed.
 
 ### RESOLVED IN v2.12.10 (AutoClipper/MegaClipper cost-crossover guard was silently dead)
 - **AutoClippers kept being bought even when MegaClippers were cheaper** ✅ (bridge.user.js → REDEPLOY)

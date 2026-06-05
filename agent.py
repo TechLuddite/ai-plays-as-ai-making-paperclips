@@ -1283,13 +1283,27 @@ def run():
                 ov.append({"action": "invest_deposit", "args": {},
                            "thought": f"OVERRIDE: {inv_reason}"})
 
-        # AutoTourney (fires when Strategic Modeling is unlocked but tourney is OFF)
+        # AutoTourney — keep it ON to mint Yomi passively, EXCEPT pause it while a project is
+        # waiting to be claimed. The bridge sends `opsProjectWaiting` = True when a project the
+        # auto-buyer will claim is affordable once ops fill to the memory-determined cap; running
+        # tournaments then just drains ops and starves that project (user-reported bug). Wiki
+        # agrees: switch AutoTourney OFF to save ops for projects. Once no claimable ops-project
+        # remains, turn it back ON. Edge-triggered (only toggles when actual ≠ desired) so it
+        # doesn't spam the toggle each tick.
         at_status = state.get('autoTourneyOn')
-        if at_status is not None and str(at_status).strip().upper() != 'ON':
-            at_reason = f"AutoTourney is {at_status!r} — enabling"
-            print(f"[!!!] AUTOTOURNEY: {at_reason}")
-            ov.append({"action": "toggle_auto_tourney", "args": {},
-                       "thought": f"OVERRIDE: {at_reason}"})
+        if at_status is not None:
+            at_on   = str(at_status).strip().upper() == 'ON'
+            waiting = bool(state.get('opsProjectWaiting'))
+            if waiting and at_on:
+                at_reason = "ops-project waiting — pausing AutoTourney so ops fill to buy it"
+                print(f"[!!!] AUTOTOURNEY: {at_reason}")
+                ov.append({"action": "toggle_auto_tourney", "args": {},
+                           "thought": f"OVERRIDE: {at_reason}"})
+            elif not waiting and not at_on:
+                at_reason = "no ops-project waiting — enabling AutoTourney for Yomi"
+                print(f"[!!!] AUTOTOURNEY: {at_reason}")
+                ov.append({"action": "toggle_auto_tourney", "args": {},
+                           "thought": f"OVERRIDE: {at_reason}"})
 
         # Tournament strategy (fires when Strategic Modeling is unlocked but
         # no valid Yomi-earning strategy is selected yet).

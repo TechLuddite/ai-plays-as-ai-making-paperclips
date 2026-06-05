@@ -265,6 +265,10 @@
             // Strategic Modeling / AutoTourney state (null when not yet unlocked)
             autoTourneyOn:     isVisible('strategyEngine') ? getText('autoTourneyStatus') : null,
             stratPicker:       isVisible('strategyEngine') ? (document.getElementById('stratPicker')?.value || null) : null,
+            // True when a claimable PROJECT_PRIORITY ops-project is affordable once ops fill to
+            // the cap — agent.py pauses AutoTourney while this holds so ops aren't drained on
+            // tournaments instead of being spent on the waiting project.
+            opsProjectWaiting: opsProjectWaiting(),
         }, invest, s2, p3);
     }
 
@@ -449,6 +453,39 @@
                 }
             }
         }
+    }
+
+    // ── Is a claimable project waiting on ops? ─────────────────────────────────
+    // True when a project the auto-buyer WILL actually claim (a PROJECT_PRIORITY match)
+    // costs ops and is affordable once ops fill to the cap (cost <= maxOps), but hasn't
+    // been bought yet (still listed). In that case we HOLD tournaments — both the manual
+    // fast-rule below AND the game's built-in AutoTourney (paused via the agent.py override
+    // off the `opsProjectWaiting` state flag) — so ops can accumulate to buy the project
+    // instead of tournaments draining ops non-stop and starving a project that's claimable
+    // at the memory-determined ops cap. (User-reported bug: tournaments ran non-stop while
+    // affordable-at-cap projects went unclaimed. Wiki agrees: switch AutoTourney OFF to save
+    // ops for projects.)
+    //
+    // Projects costing MORE than maxOps need more MEMORY first, so they do NOT block
+    // tournaments — ops just sit at the cap and AutoTourney can mint Yomi until memory grows
+    // enough to bring the project within reach. Non-PROJECT_PRIORITY projects (e.g. Space
+    // Exploration, the endgame projects) are never auto-bought, so they must not block either.
+    function opsProjectWaiting() {
+        const maxOps = getNum('maxOps', 0);
+        if (maxOps <= 0) return false;
+        // Note: do NOT filter out disabled buttons here — an unaffordable-but-revealed project
+        // is exactly the "waiting" case we want to catch; its cost text is still readable.
+        const btns = Array.from(
+            document.querySelectorAll('#projectListTop button, #projectsDiv button')
+        ).filter(btn => btn.offsetParent !== null);
+        for (const keyword of PROJECT_PRIORITY) {
+            for (const btn of btns) {
+                if (!btn.innerText.toLowerCase().includes(keyword)) continue;
+                const cost = getProjectCost(btn);
+                if (cost && cost.type === 'ops' && cost.amount <= maxOps) return true;
+            }
+        }
+        return false;
     }
 
     // ── Auto-buy marketing ────────────────────────────────────────────────────
@@ -709,6 +746,10 @@
         const maxOps      = getNum('maxOps', 0);
         const costText    = getText('newTourneyCost') || '1000';
         const tourneyCost = parseInt(costText.replace(/[^0-9]/g, '')) || 1000;
+
+        // HOLD: if a project we'll auto-buy is claimable once ops fill to the cap, don't
+        // drain ops on a tournament — let ops accumulate to buy the project first.
+        if (opsProjectWaiting()) return;
 
         if (maxOps > 100 && currOps >= maxOps * 0.9 && currOps >= tourneyCost) {
             const newBtn = document.getElementById('btnNewTournament');

@@ -4,6 +4,23 @@ All notable changes to this project are documented here.
 
 ---
 
+## [2.12.11] - 2026-06-05 — Hold tournaments while a project is claimable (stop ops drain)
+
+### Fixed
+- **Tournaments ran non-stop and drained ops that should have gone to claimable projects**
+  (`bridge.user.js` + `agent.py`) — live: ops 17,545/21,000 with AutoTourney ON. A project costing
+  between ~90% and 100% of the ops cap could never be afforded because tournaments fire at 90% of cap
+  and drain ops before they fill. TWO mechanisms were draining ops, neither aware of waiting projects:
+  the bridge `autoRunTournament()` fast-rule, and the `agent.py` override that kept the game's built-in
+  AutoTourney unconditionally ON. Fix: new bridge helper `opsProjectWaiting()` — true when a project
+  the auto-buyer WILL claim (a `PROJECT_PRIORITY` match) costs ops and is affordable once ops fill to
+  the cap (`cost <= maxOps`) but isn't bought yet. While it holds, `autoRunTournament()` skips starting
+  a new tournament, and the bridge sends an `opsProjectWaiting` state flag that makes the `agent.py`
+  AutoTourney override **pause** AutoTourney (toggle OFF) instead of forcing it ON — re-enabling it
+  only once no claimable ops-project remains. Projects costing MORE than the cap need more memory
+  first, so they don't block tournaments (ops sit at the cap and AutoTourney mints Yomi). Matches the
+  wiki ("switch AutoTourney OFF to save ops for projects"). **Tampermonkey REDEPLOY + restart agent.**
+
 ## [2.12.10] - 2026-06-05 — Fix AutoClipper/MegaClipper cost-crossover guard (regression of v2.4)
 
 ### Fixed
