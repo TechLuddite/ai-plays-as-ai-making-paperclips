@@ -608,9 +608,14 @@ def format_state(state):
             # launched, 154 lost). Steer it to allocate Hazard FIRST; the PROBE PLAN
             # handles the launch once haz/rep are placed.
             haz_now = _probe_int(state, 'probeHaz')
+            combat_now = _probe_int(state, 'probeCombat')
+            drifters_now = safe_float(state.get('drifters'), 0)
             if haz_now < 3:
                 flag = (" ⚠ 0 probes — but DON'T launch yet: allocate Hazard Remediation first "
                         "(probes die instantly at Haz 0). Follow the PROBE PLAN above.")
+            elif drifters_now > 0 and combat_now < 3:
+                flag = (" ⚠ 0 probes & UNDER ATTACK — DON'T launch yet: raise Combat first "
+                        "(fresh probes are slaughtered at Combat 0). Follow the PROBE PLAN above.")
             else:
                 flag = " ⚠ NO PROBES — follow the PROBE PLAN (launch once haz/rep are set)"
         if k == 'probeTrust':
@@ -707,13 +712,20 @@ def _probe_design_advice(state):
     speed  = _probe_int(state, 'probeSpeed')
     nav    = _probe_int(state, 'probeNav')
     combat = _probe_int(state, 'probeCombat')
+    fac    = _probe_int(state, 'probeFac')
+    harv   = _probe_int(state, 'probeHarv')
+    wire   = _probe_int(state, 'probeWire')
     probes   = safe_float(state.get('probeTotal'), 0)
     drifters = safe_float(state.get('drifters'),   0)
 
     # How much total trust we actually want to USE (the sum of our stat targets). We buy
     # toward this, capped at the current Max Trust. Buying beyond what we allocate just
     # raises value drift for nothing, so the budget = the allocation, not a blind "to 20".
-    desired = HAZ_TARGET + REP_TARGET + SPEED_TARGET + NAV_TARGET
+    # Fac/Harv/Wire get AUX_MAX (1) each for clip/matter sustainability (wiki: a big swarm
+    # self-provides — 1 each is plenty), but only once the cap is large enough to afford them
+    # after the core stats. At the default Max Trust of 20 they stay 0 (every point is needed
+    # for Haz/Combat/Rep/Speed/Nav) — that 0 is wiki-correct, not a bug.
+    desired = HAZ_TARGET + REP_TARGET + SPEED_TARGET + NAV_TARGET + 3 * AUX_MAX
     if drifters > 0:
         desired += COMBAT_TARGET
     buy_to = min(desired, mx)
@@ -738,31 +750,34 @@ def _probe_design_advice(state):
             return 'raise_probe_nav', f"Nav {nav}->{NAV_TARGET} (matter access) [{avail} free]"
         if speed < SPEED_TARGET:
             return 'raise_probe_speed', f"Speed {speed}->{SPEED_TARGET} (explore) [{avail} free]"
-        # All core targets met but points still free (e.g. Max Trust was raised) → extra
+        # Aux production (Fac/Harv/Wire) — 1 each for clip/matter sustainability, but only after
+        # the core stats. With Max Trust 20 these never get a point (correctly 0); once the cap is
+        # raised (Honor → increase_max_trust) the spare points fill them in.
+        if fac < AUX_MAX:
+            return 'raise_probe_fac', f"Factory {fac}->{AUX_MAX} (sustain clip supply) [{avail} free]"
+        if harv < AUX_MAX:
+            return 'raise_probe_harv', f"Harvester {harv}->{AUX_MAX} (sustain matter) [{avail} free]"
+        if wire < AUX_MAX:
+            return 'raise_probe_wire', f"Wire {wire}->{AUX_MAX} (sustain wire) [{avail} free]"
+        # All targets met but points still free (e.g. Max Trust was raised further) → extra
         # Self-Replication accelerates colonization (wiki: spare points go to replication).
         return 'raise_probe_rep', f"spare {avail} trust — extra Rep to accelerate colonization"
 
-    # ── LAUNCH once the points are placed (Haz/Rep set) and nothing is flying ─────────
-    if probes <= 0 and haz >= min(HAZ_TARGET, 5) and rep >= min(REP_TARGET, 4):
-        return 'launch_probe', "haz/rep allocated, probeTotal 0 — launch the initial probe batch"
-
-    # ── BUY MORE TRUST only when there are no free points to place ────────────────────
-    if total < buy_to and (trust_cost <= 0 or yomi >= trust_cost):
-        return 'increase_probe_trust', (f"buy Probe Trust {total}/{buy_to} to allocate next "
-                                        f"(cost {int(trust_cost):,} yomi — you have plenty)")
-
-    # ── COMBAT EMERGENCY: Drifters attacking, Combat below target, but trust is MAXED ─────
-    # (no free points and no more trust to buy). This is the "we're losing the war" case.
+    # ── COMBAT EMERGENCY (BEFORE launch): Drifters attacking, Combat below target, but trust is
+    # MAXED with no free points. This MUST come before the launch branch — otherwise, when the
+    # swarm has collapsed to 0 probes under attack, the advisor relaunches into the Drifters every
+    # tick (they die instantly at Combat 0) and never fixes Combat. Get Combat allocated FIRST,
+    # THEN launch into a defended position.
     if drifters > 0 and combat < COMBAT_TARGET:
         # Preferred: raise the trust CAP with Honor (doesn't sacrifice another stat) — but only
-        # when Honor can afford it (Honor comes from killing Drifters, so early on it's 0).
+        # when Honor can afford it (Honor comes from killing Drifters / honor projects).
         honor    = safe_float(state.get('honor'), 0)
         max_cost = safe_float(state.get('maxTrustCost'), 0)
         if total >= mx and max_cost > 0 and honor >= max_cost:
             return 'increase_max_trust', (f"Combat needs points but trust maxed ({total}/{mx}); "
                                           f"increase_max_trust ({int(max_cost):,} Honor) for more room")
         # Otherwise REBALANCE: free a point by lowering an OVER-allocated stat so the next tick
-        # can raise Combat (the allocate-first block above will spend the freed point on Combat).
+        # can raise Combat (the allocate-first block above spends the freed point on Combat).
         # Self-Replication is the donor — once the swarm is huge, the wiki says lower replication
         # and fund combat/exploration. Never lower Hazard (the swarm dies without it).
         if rep > 4:
@@ -775,6 +790,16 @@ def _probe_design_advice(state):
         if speed > 1:
             return 'lower_probe_speed', (f"⚔ UNDER ATTACK, Combat {combat}/{COMBAT_TARGET}, trust "
                                          f"maxed — lower Speed {speed} to free a Combat point")
+
+    # ── LAUNCH once the points are placed (Haz/Rep set) and nothing is flying ─────────
+    # (Reached only when NOT in an unresolved combat emergency — see the block above.)
+    if probes <= 0 and haz >= min(HAZ_TARGET, 5) and rep >= min(REP_TARGET, 4):
+        return 'launch_probe', "haz/rep allocated, probeTotal 0 — launch the initial probe batch"
+
+    # ── BUY MORE TRUST only when there are no free points to place ────────────────────
+    if total < buy_to and (trust_cost <= 0 or yomi >= trust_cost):
+        return 'increase_probe_trust', (f"buy Probe Trust {total}/{buy_to} to allocate next "
+                                        f"(cost {int(trust_cost):,} yomi — you have plenty)")
 
     return None, None
 
@@ -1334,15 +1359,24 @@ def run():
                     and state.get('performance') is None:
                 print(f"[WARN] LLM: {action} — swarm not active yet, substituting wait")
                 action = 'wait'
-            # Veto launching probes into certain death: at Hazard Remediation < 3 every probe
-            # is lost to hazards immediately (wiki: below 3 = heavy losses; at Haz 0 it's 100%
-            # — observed "Lost to hazards: 154" with 154 launched, 0 surviving). Each probe
-            # also costs 100 quadrillion clips, so this just burns clips. This vetoes a
-            # known-futile action (like the unaffordable-project guard) — it does NOT play the
-            # probe game; once Haz is allocated the LLM launches freely.
-            if action == 'launch_probe' and _probe_int(state, 'probeHaz') < 3:
-                print(f"[WARN] LLM: launch_probe — Hazard Remediation < 3, probes would die instantly; substituting wait")
-                action = 'wait'
+            # Veto launching probes into certain death (a known-futile, clip-burning action —
+            # each probe costs 100 quadrillion clips). Two cases:
+            #   (a) Hazard Remediation < 3: probes are lost to hazards instantly (wiki: below 3 =
+            #       heavy losses; at Haz 0 it's 100% — observed 154 launched, 154 lost).
+            #   (b) Drifters present and Combat < 3: a fresh launch is slaughtered in combat
+            #       (combat table: Combat 0-2 kills ~nothing). Observed live: the swarm collapsed
+            #       to 0, then the LLM relaunched into 1.9B Drifters every tick at Combat 0.
+            # This does NOT play the probe game — once Haz/Combat are set the LLM launches freely.
+            if action == 'launch_probe':
+                _haz = _probe_int(state, 'probeHaz')
+                _combat = _probe_int(state, 'probeCombat')
+                _drifters = safe_float(state.get('drifters'), 0)
+                if _haz < 3:
+                    print(f"[WARN] LLM: launch_probe — Hazard Remediation < 3, probes would die instantly; substituting wait")
+                    action = 'wait'
+                elif _drifters > 0 and _combat < 3:
+                    print(f"[WARN] LLM: launch_probe — Drifters attacking with Combat {_combat} < 3, fresh probes would be slaughtered; substituting wait")
+                    action = 'wait'
             if action in invest_actions and not state.get('portValue', ''):
                 print(f"[WARN] LLM: {action} — investment system not active, substituting wait")
                 action = 'wait'
@@ -1372,7 +1406,9 @@ def run():
             #   state — essentially a partial game restart.
             if action == 'buy_project':
                 name_lower = (args.get('name') or '').lower()
-                NEVER_BUY = ['xavier', 'quantum temporal reversion']
+                # Memory release dismantles memory to recover unused clips — pointless in Stage 3
+                # (memory is maxed and clips are abundant), and it lowers the ops ceiling. Never buy.
+                NEVER_BUY = ['xavier', 'quantum temporal reversion', 'memory release']
                 for blocked in NEVER_BUY:
                     if blocked in name_lower:
                         print(f"[WARN] LLM: buy_project:{args.get('name')!r} — on never-buy list, substituting wait")

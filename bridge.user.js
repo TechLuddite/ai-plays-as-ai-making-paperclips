@@ -351,6 +351,11 @@
         'combat',                    // 150k ops — probe combat vs Drifters (unlocks when you start
                                      //   losing probes to Drifters ~1M); only matches the project btn
         'name the battles',          // 225k creat — unlocks Honor (raises Max Probe Trust)
+        // HONOR projects — Honor buys Max Trust (increase_max_trust), which is the only way to add
+        //   Combat without sacrificing another stat. Both have dual costs (the parser reads the
+        //   first/non-yomi cost; the yomi half is tiny and always affordable here).
+        'threnody for the heroes',   // 50k creat + 20k yomi — grants 10,000 honor (one-time)
+        'glory',                     // 200k ops + 30k yomi — bonus honor per consecutive victory
         'the ooda loop',             // 175k ops — Speed aids combat survival
         'strategic attachment',      // 175k creat — Stage 3 honor/creativity project
         // creativity-cost

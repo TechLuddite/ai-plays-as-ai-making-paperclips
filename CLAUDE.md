@@ -111,6 +111,29 @@ Python restarts alone do NOT update the browser script.
 - **Xavier Re-initialization appears twice** in project list (game quirk or selector issue).
 - **start.ps1 display quirk**: relay + agent both in same terminal. Deferred.
 
+### RESOLVED IN v2.12.4 (live-test follow-up to v2.12.3)
+Live: the swarm COLLAPSED to probeTotal 0 (9.9B born, all dead) under 1.9B Drifters with Combat
+still 0, Honor −227. Three issues:
+- **Advisor relaunched into death every tick instead of fixing Combat** ✅ (agent.py — restart) —
+  the LAUNCH branch ran BEFORE the combat-rebalance branch, so with probeTotal 0 + Drifters present
+  it kept emitting `launch_probe` (fresh probes slaughtered at Combat 0) and never rebalanced.
+  REORDERED `_probe_design_advice()`: the combat emergency (lower Rep → raise Combat when trust is
+  maxed) now runs BEFORE launch, so Combat reaches target FIRST, then it launches into a defended
+  position. Also extended the `launch_probe` guard: veto launches when Drifters present AND Combat
+  < 3 (not just Haz < 3) — fresh probes are slaughtered (combat table: Combat 0-2 ≈ 0 kills). OBS
+  probeTotal=0 flag updated to say "raise Combat first" under attack.
+- **Two must-buy HONOR projects ignored** ✅ (bridge.user.js → REDEPLOY) — `Threnody for the Heroes
+  of Durenstein` (50k creat +20k yomi → +10,000 honor) and `Glory` (200k ops +30k yomi → honor per
+  victory) were not in `PROJECT_PRIORITY`. Honor buys Max Trust (`increase_max_trust`), the only way
+  to add Combat without sacrificing another stat — so these are the strategic unlock. Added both
+  (the cost parser reads the first/non-yomi cost; the yomi half is tiny and always affordable).
+- **"0 in 4 probe areas" + Memory release** ✅ — Fac/Harv/Wire at 0 is wiki-CORRECT under 20 trust
+  (a big swarm self-provides; every point is needed for Haz/Combat/Rep/Speed/Nav). The advisor now
+  fills Fac/Harv/Wire to 1 each (probe_aux_max) but ONLY once Max Trust is raised past the core
+  budget (via the honor projects) — so they stay 0 at 20 trust (correct) and fill in later. Added
+  `memory release` to the LLM NEVER_BUY guard (it dismantles memory for clips — pointless/harmful;
+  it also has no parseable cost so the bridge never auto-bought it).
+
 ### RESOLVED IN v2.12.3
 - **Combat unallocated when Drifters attack & trust is maxed** ✅ (Python-only — restart agent, NO
   redeploy) — live: Drifters 3.7M attacking, losing probes, but **Combat 0** with Trust 20/20 fully
