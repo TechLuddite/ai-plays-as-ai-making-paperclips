@@ -111,6 +111,18 @@ Python restarts alone do NOT update the browser script.
 - **Xavier Re-initialization appears twice** in project list (game quirk or selector issue).
 - **start.ps1 display quirk**: relay + agent both in same terminal. Deferred.
 
+### RESOLVED IN v2.12.3
+- **Combat unallocated when Drifters attack & trust is maxed** ✅ (Python-only — restart agent, NO
+  redeploy) — live: Drifters 3.7M attacking, losing probes, but **Combat 0** with Trust 20/20 fully
+  allocated (Rep 12, Haz 6, Speed 1, Exp 1). The advisor had no free points, couldn't raise Max
+  Trust (Honor 0 — Honor only comes from killing Drifters), and so returned None — nothing happened.
+  Added a **REBALANCE** branch to `_probe_design_advice()`: when Drifters present and Combat <
+  target and trust is maxed, free a point by lowering an OVER-allocated stat (Self-Replication
+  first — the swarm is already huge; never Hazard), which the allocate-first block then spends on
+  Combat next tick. Net: it walks Rep down and Combat up (e.g. Rep 12→4, Combat 0→8) one click per
+  tick until Combat hits target, then holds. Still prefers `increase_max_trust` (Honor) when
+  affordable (doesn't sacrifice another stat). Drifters OBS flag updated to explain the rebalance.
+
 ### RESOLVED IN v2.12.2
 - **"Entertain the Swarm" was never wired** ✅ — when the swarm "thinks" with no Available Matter
   left it goes **Bored** and stops generating Swarm Gifts; the cure is the "Entertain the Swarm"

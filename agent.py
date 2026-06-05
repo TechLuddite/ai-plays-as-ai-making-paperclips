@@ -594,7 +594,12 @@ def format_state(state):
             if prod >= 0 and fv > prod:
                 flag = f" ⚠ consumption > production ({prod:.0f} MW) — JS adding solar"
         if k == 'drifters' and fv > 0:
-            flag = " ⚠ UNDER ATTACK — consider raise_probe_combat"
+            combat_now = _probe_int(state, 'probeCombat')
+            if combat_now < _cfg.get("probe_combat_target", 8):
+                flag = (" ⚔ UNDER ATTACK — raise Combat (follow PROBE PLAN; if trust is maxed it "
+                        "lowers Rep to free a point for Combat)")
+            else:
+                flag = " ⚔ under attack but Combat is set — holding"
         if k == 'colonized':
             flag = " ← primary Stage 3 goal (reach 100%)"
         if k == 'probeTotal' and fv == 0:
@@ -746,14 +751,30 @@ def _probe_design_advice(state):
         return 'increase_probe_trust', (f"buy Probe Trust {total}/{buy_to} to allocate next "
                                         f"(cost {int(trust_cost):,} yomi — you have plenty)")
 
-    # Combat needs room but trust is maxed → raise the cap with Honor (comes in abundance),
-    # only when Honor can actually afford it (else the button is disabled).
-    if drifters > 0 and combat < COMBAT_TARGET and total >= mx:
+    # ── COMBAT EMERGENCY: Drifters attacking, Combat below target, but trust is MAXED ─────
+    # (no free points and no more trust to buy). This is the "we're losing the war" case.
+    if drifters > 0 and combat < COMBAT_TARGET:
+        # Preferred: raise the trust CAP with Honor (doesn't sacrifice another stat) — but only
+        # when Honor can afford it (Honor comes from killing Drifters, so early on it's 0).
         honor    = safe_float(state.get('honor'), 0)
         max_cost = safe_float(state.get('maxTrustCost'), 0)
-        if max_cost > 0 and honor >= max_cost:
+        if total >= mx and max_cost > 0 and honor >= max_cost:
             return 'increase_max_trust', (f"Combat needs points but trust maxed ({total}/{mx}); "
                                           f"increase_max_trust ({int(max_cost):,} Honor) for more room")
+        # Otherwise REBALANCE: free a point by lowering an OVER-allocated stat so the next tick
+        # can raise Combat (the allocate-first block above will spend the freed point on Combat).
+        # Self-Replication is the donor — once the swarm is huge, the wiki says lower replication
+        # and fund combat/exploration. Never lower Hazard (the swarm dies without it).
+        if rep > 4:
+            return 'lower_probe_rep', (f"⚔ UNDER ATTACK (Drifters {int(drifters):,}), Combat "
+                                       f"{combat}/{COMBAT_TARGET} but trust maxed — lower Rep {rep} "
+                                       f"to free a point for Combat")
+        if nav > 1:
+            return 'lower_probe_nav', (f"⚔ UNDER ATTACK, Combat {combat}/{COMBAT_TARGET}, trust "
+                                       f"maxed, Rep at floor — lower Nav {nav} to free a Combat point")
+        if speed > 1:
+            return 'lower_probe_speed', (f"⚔ UNDER ATTACK, Combat {combat}/{COMBAT_TARGET}, trust "
+                                         f"maxed — lower Speed {speed} to free a Combat point")
 
     return None, None
 
