@@ -348,27 +348,33 @@ It's a work in progress. But it works.
 
 ## Version History
 
-**v2.12 (current) — unsticking the Stage 3 bootstrap (stage-aware inputs)**
+**v2.12.8 (current) — 🎉 the first complete run: 100% of the universe explored**
 
-v2.11 reached Stage 3 but the LLM *stalled* at the bootstrap: it stayed anchored to Stage-2
-memory/processor reasoning and never launched a probe (colonized stuck at 0%). The cause was its
-**inputs**, not missing code — the observation kept showing Stage-2 fields in Stage 3 and fired two
-"add_memory urgently" flags that are flat wrong once memory passes its 250–300 cap (in Stage 3,
-having *more* processors than memory is correct). v2.12 fixes it entirely LLM-side (no JS
-auto-player, no override — the model still chooses every action):
+The agent played autonomously through **all three stages and colonized the entire universe** (Stage 1
+→ 2 → 3 → 100%), reaching the game's endgame — the "Message from the Emperor of Drift" and its final
+Accept/Reject choice. That choice is the player's alone, so the agent is now blocked from triggering
+the irreversible finale.
 
-- **Stage-aware observation** — Stage 3 shows a probe-first view and drops the stale Stage-1/2
-  clutter, while keeping memory/processors/creativity as a clearly *secondary* concern (the wiki
-  still wants memory to 250–300, then processors to farm the 400k creativity for two key projects).
-- **A loud "you are in Stage 3" prompt header**, **history reset on the stage transition**, and a
-  **Stage-3 loop-breaker** that points straight at the probe actions.
-- **A deterministic probe-design advisor** that prints one `►► PROBE PLAN → <action>` line each
-  tick — buy Probe Trust → Hazard 6 → Replication → launch the swarm → Speed/Nav → Combat when
-  Drifters appear — turning the tricky 8-stat trust-budget allocation into a single clear next step
-  the model can follow. Targets are tunable in `config.json`.
+Getting there took an extended Stage 3 debugging arc (v2.12 → v2.12.8), all driven by watching the
+live game:
 
-**Python-only — no Tampermonkey redeploy** (the probe actions were already wired in v2.11). Restart
-the relay and agent to apply.
+- **v2.12 — unstuck the Stage 3 bootstrap.** The LLM had stalled at colonized 0%, anchored on stale
+  Stage-2 memory/processor reasoning. Fixed entirely on the LLM's *inputs* (no JS auto-player — the
+  model still chooses every action): a stage-aware observation that drops the stale clutter and gates
+  off the misleading flags, a loud "you are in Stage 3" prompt header, a history reset on the stage
+  transition, and a **deterministic probe-design advisor** that prints one `►► PROBE PLAN → <action>`
+  line per tick — turning the tricky 8-stat trust-budget allocation into a single clear next step.
+- **v2.12.1–.6 — survival.** Allocate trust before buying; never launch probes into certain death
+  (Hazard/Combat too low); a **Combat reserve** that deploys the moment Drifters attack without
+  gutting Replication; auto-buy the Stage 3 support and Honor projects; revive a "Bored" swarm; and
+  stop an *endlessly repeatable* honor project from quietly draining millions of Yomi.
+- **v2.12.7 — colonization.** Once combat is handled, all spare trust pours into **Speed ×
+  Exploration** (the wiki's matter-rate formula). This is what drove colonized from 68% to 100%.
+
+The probe-design strategy is a deterministic advisor reading wiki-verified, config-tunable targets —
+keeping Stage 3 "LLM-driven" (the model emits every action) while staying reliable on a small local
+model. Most of these were Python-only; a few touched `bridge.user.js` and needed a Tampermonkey
+redeploy. See `CHANGELOG.md` for the per-version detail.
 
 **v2.11 — reached Stage 3 (the endgame)**
 

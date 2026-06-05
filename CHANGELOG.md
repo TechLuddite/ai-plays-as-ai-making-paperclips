@@ -4,6 +4,105 @@ All notable changes to this project are documented here.
 
 ---
 
+## [2.12.8] - 2026-06-05 — 🎉 Endgame reached (100% of the universe explored)
+
+### Added
+- **Endgame safety guard** (`agent.py`) — the colonization scaling (2.12.7) carried the run from
+  68% → **100% of the universe explored**, and the "Message from the Emperor of Drift" endgame
+  sequence appeared. The final Accept (New Game+ restart) / Reject (disassemble the empire →
+  irreversible credits) choice is the player's alone, so the LLM `NEVER_BUY` guard now blocks every
+  endgame project: the Emperor message + dialogue boxes, Accept, Reject, both Universe choices, the
+  Disassemble chain, and the Driftwar Monument. Verified no false-match on legit Stage 3 buys.
+  Python-only — **no redeploy**. This was the first complete run: Stage 1 → 2 → 3 → 100%.
+
+## [2.12.7] - 2026-06-04 — Probe design scales past Max Trust 20 (colonization)
+
+### Changed
+- **Extra trust now drives colonization via Speed × Exploration** (`agent.py`, `config.json`) — the
+  run survived (manual Haz 10 / Combat 13) but `colonized` was stuck near 0% because Speed 1 ×
+  Exploration 3 ≈ no exploration rate. Per the wiki, once the swarm is big and combat is handled you
+  raise Speed + Exploration to cover the universe (matter rate = the *product*; keep Speed ≥ Exp).
+  `_probe_design_advice()` now runs a 3-phase budget that scales with Max Trust: pre-launch baseline
+  (15) → combat reserve (held free until Drifters, then filled to `probe_combat_target` = 8) →
+  colonize (all trust above survival pours into Speed/Exploration). Drove colonized 68% → 100%.
+  Python-only — **no redeploy**.
+
+## [2.12.6] - 2026-06-04 — Owner's initial probe-design allocation + Combat reserve
+
+### Changed
+- **New opening 20-trust design** (`agent.py`, `config.json`) — 1 each in Speed/Exploration/Factory/
+  Harvester/Wire, 5 each in Self-Replication and Hazard, and **5 in Combat held in reserve** until
+  combat opens. By building only to 15 up front there's always cap headroom, so Combat deploys
+  instantly without sacrificing Rep (the trap that nearly lost the run). Reordered the advisor:
+  allocate → buy (deploy reserve) → rebalance (only when truly maxed) → launch. Python-only.
+
+## [2.12.5] - 2026-06-04 — Stop the repeatable honor project draining yomi
+
+### Fixed
+- **"Threnody for the Heroes" is endlessly repeatable** (`bridge.user.js`) — added in 2.12.4, it was
+  auto-bought every 1.5s (creat 50k +10k, yomi 20k +4k each, for 10k honor) and bled millions of
+  yomi; the cost parser only saw the creativity cost, spending yomi invisibly. Removed it from
+  `PROJECT_PRIORITY` (repeatable projects must never auto-buy) and added a `YOMI_RESERVE` (1M) guard
+  that parses any yomi cost and skips a buy that would dip below the reserve. **Redeploy.**
+
+## [2.12.4] - 2026-06-04 — Combat recovery: rebalance before launch, auto-buy honor projects
+
+### Fixed
+- **Advisor relaunched into death instead of fixing Combat** (`agent.py`) — after the swarm
+  collapsed to 0 under 1.9B Drifters at Combat 0, the launch branch ran before the combat rebalance,
+  so it relaunched (probes died instantly) forever. Reordered: combat emergency before launch;
+  extended the launch guard to veto launching at Combat < 3 (not just Haz < 3).
+### Added
+- **Honor projects auto-buy** (`bridge.user.js`, **redeploy**) — Threnody + Glory to `PROJECT_PRIORITY`
+  (Honor → Max Trust → Combat without sacrificing a stat). Aux stats (Fac/Harv/Wire) fill to 1 each
+  only once Max Trust is raised; `memory release` added to the LLM never-buy guard.
+
+## [2.12.3] - 2026-06-04 — Combat rebalance when Drifters attack and trust is maxed
+
+### Fixed
+- **Combat unallocated under attack** (`agent.py`) — Drifters attacking but Combat 0 with trust
+  20/20 fully allocated and no Honor to raise the cap. Added a rebalance: lower an over-allocated
+  stat (Self-Replication first, never Hazard) to free a point for Combat, walking Rep down and Combat
+  up one click per tick. Python-only.
+
+## [2.12.2] - 2026-06-04 — "Entertain the Swarm" (Bored-swarm recovery)
+
+### Added
+- **`entertain_swarm`** (`bridge.user.js`, **redeploy**; `agent.py`, `config.json`) — a Bored swarm
+  (thinking with no matter left) stops generating Swarm Gifts; only the Disorganized→sync recovery
+  had ever been wired. Added the sibling: a hard override that clicks "Entertain the Swarm" when
+  `swarmStatus` is Bored and creativity ≥ `entertain_creativity_floor` (450k, kept above the Stage 3
+  creativity projects). Works Stage 2 or 3.
+
+## [2.12.1] - 2026-06-04 — Stage 3 live-test fixes
+
+### Fixed
+- **Allocate trust before buying more** — the advisor bought to the cap before allocating any, so it
+  sat at "10/20, 0 allocated" while probes died. Reordered to allocate free points first.
+- **Veto Haz-0 launches** — the `probeTotal=0` OBS flag said "launch now"; the LLM launched at Haz 0
+  and all probes died to hazards. Fixed the flag + added a launch guard at Haz < 3.
+### Added
+- **Stage 3 support projects auto-buy** (`bridge.user.js`, **redeploy**) — Elliptic Hull Polytopes
+  (halves probe hazard losses), Combat, Name the Battles, The OODA Loop, Strategic Attachment.
+
+## [2.12] - 2026-06-04 — Stage 3 LLM bootstrap stall fixed (stage-aware inputs)
+
+### Fixed
+- **The agent reached Stage 3 but froze** at colonized 0% / 0 probes, emitting `wait` every tick while
+  re-quoting a stale Stage-2 "add_memory urgently" thought. Root cause: `format_state()` still showed
+  Stage-2 memory/processor fields in Stage 3 and fired two naive flags that are *wrong* once memory
+  passes its 250–300 cap, drowning out the correct advice. Fixed entirely LLM-side (owner constraint:
+  keep Stage 3 LLM-driven — no JS auto-player), all `agent.py` + `config.json`, **no redeploy**:
+  1. `get_stage(state)` from the bridge `phase` field.
+  2. Stage-aware OBS (`STAGE3_KEYS`, probe-first) with the misleading flags gated off in Stage 3.
+  3. A loud Stage-3 SYSTEM_PROMPT header (`STAGE_HEADERS` / `build_system_prompt`).
+  4. History + loop-tracker reset on stage transition.
+  5. A Stage-3 loop-breaker tip pointing at the probe actions.
+  6. A deterministic probe-design advisor `_probe_design_advice()` emitting one `►► PROBE PLAN →
+     <action>` OBS line per tick (config-tunable targets) — the key technique for a weak local model.
+
+---
+
 ## [2.11] - 2026-06-04 — Stage 3 (Space Exploration + Von Neumann Probes)
 
 ### Added

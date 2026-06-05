@@ -87,17 +87,18 @@ In `bridge.user.js` (constants at top of file):
 Python restarts alone do NOT update the browser script.
 
 ## Current Status
-- Stage 1: working well; trust allocation now follows the verified memory-wall ladder (v2.5),
-  so it drives toward the 70-memory HypnoDrones wall instead of stalling at processor parity
-- Stage 2: tournaments fully working (Yomi flowing, investment engine auto-upgrading to Level 3+);
-  production starvation, domain output, project queue all resolved (v2.3); domain grading (v2.4);
-  Power & manufacturing engine (solar/batteries/drones/factories) auto-built (v2.7)
-- Stage 3 (space exploration, probe design): bootstrap stall fixed in v2.12 (stage-aware OBS/prompt
-  + history reset + probe-design advisor); v2.12.1 follow-up fixes the live-test issues — advisor
-  now ALLOCATES trust before buying more, premature launches at Haz 0 are vetoed, and Stage 3
-  support projects (Elliptic Hull Polytopes etc.) auto-buy. v2.12.1 needs a Tampermonkey REDEPLOY
-  (bridge PROJECT_PRIORITY change). See "RESOLVED IN v2.12.1" / "v2.12" below.
-- Best run: 13.5B+ clips, Stage 2, investment engine Level 3, Yomi accumulating, Marketing Level 20
+- 🎉 **FIRST COMPLETE RUN (v2.12.8):** the agent played autonomously Stage 1 → 2 → 3 → **100% of the
+  universe explored**, reaching the endgame ("Message from the Emperor of Drift" → the player's
+  Accept/Reject choice). The agent is blocked from triggering that irreversible finale (NEVER_BUY).
+- Stage 1: solid — trust follows the verified memory-wall ladder (v2.5).
+- Stage 2: solid — tournaments/Yomi, investment engine, power+manufacturing+swarm all auto (v2.3–2.9).
+- Stage 3 (probe design / colonization): bootstrap stall fixed in v2.12 (stage-aware OBS/prompt +
+  history reset + deterministic probe-design advisor); v2.12.1–.8 iterated live to survival + full
+  colonization — allocate-before-buy, launch vetoes at Haz/Combat < 3, a Combat **reserve** that
+  deploys when Drifters attack without gutting Rep, auto-buy of Stage 3 support + Honor projects
+  (the repeatable Threnody is NOT auto-bought — it drains yomi), Bored-swarm "Entertain" recovery,
+  and the colonization fix (spare trust → Speed × Exploration). See "RESOLVED/CHANGED IN v2.12.x".
+- Best run: the first full game (Stage 1 → 100% explored). Earlier peak: 13.5B+ clips in Stage 2.
 
 ## Known Issues
 
