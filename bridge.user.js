@@ -17,6 +17,13 @@
     const STATE_MS  = 2000;
     const ACTION_MS = 500;
 
+    // Yomi reserve the project auto-buyer must never spend below. Some Stage 3 projects cost
+    // yomi (often as a SECOND cost the old parser didn't even see), and one — "Threnody for the
+    // Heroes" — is ENDLESSLY repeatable with a rising cost, so auto-buying it drained millions of
+    // yomi. Yomi is precious in Stage 3 (it funds increase_probe_trust), so the auto-buyer now
+    // skips any project whose yomi cost would drop yomi below this floor.
+    const YOMI_RESERVE = 1000000;  // keep ≥1M yomi for probe-trust upgrades
+
     // ── Stage 2 manufacturing / power tuning (edit to change build behavior) ─────
     // Stage 2 is a power-management game: drones (1 MW each) and factories (200 MW each)
     // CONSUME power; solar farms (+50 MW each) PRODUCE it. Everything is paid in CLIPS,
@@ -352,10 +359,11 @@
                                      //   losing probes to Drifters ~1M); only matches the project btn
         'name the battles',          // 225k creat — unlocks Honor (raises Max Probe Trust)
         // HONOR projects — Honor buys Max Trust (increase_max_trust), which is the only way to add
-        //   Combat without sacrificing another stat. Both have dual costs (the parser reads the
-        //   first/non-yomi cost; the yomi half is tiny and always affordable here).
-        'threnody for the heroes',   // 50k creat + 20k yomi — grants 10,000 honor (one-time)
-        'glory',                     // 200k ops + 30k yomi — bonus honor per consecutive victory
+        //   Combat without sacrificing another stat.
+        // NOTE: "Threnody for the Heroes" is deliberately NOT here — it is ENDLESSLY repeatable
+        //   (creat 50k +10k each, yomi 20k +4k each, for 10k honor each), so auto-buying it drained
+        //   millions of yomi. Buy it deliberately (LLM/manual) for honor, not on a 1.5s auto-loop.
+        'glory',                     // 200k ops + 10k yomi (one-time) — bonus honor per victory
         'the ooda loop',             // 175k ops — Speed aids combat survival
         'strategic attachment',      // 175k creat — Stage 3 honor/creativity project
         // creativity-cost
@@ -397,6 +405,16 @@
                 if (!btn.innerText.toLowerCase().includes(keyword)) continue;
                 const cost = getProjectCost(btn);
                 if (!cost) continue;
+                // YOMI RESERVE guard. getProjectCost() returns only ONE cost type, but several
+                // Stage 3 projects ALSO cost yomi as a second cost it never sees. Parse any yomi
+                // cost straight from the button text and refuse to spend yomi below the reserve —
+                // this protects the yomi we need for increase_probe_trust from being silently
+                // drained (e.g. by repeatable honor projects).
+                const yomiM = btn.innerText.match(/([\d,]+)\s*yomi/i);
+                if (yomiM) {
+                    const yomiCost = parseInt(yomiM[1].replace(/,/g, ''));
+                    if (currentYomi - yomiCost < YOMI_RESERVE) continue;  // would dip below reserve — skip
+                }
                 const canAfford =
                     (cost.type === 'ops'        && currentOps   >= cost.amount) ||
                     (cost.type === 'creativity'  && currentCrt   >= cost.amount) ||

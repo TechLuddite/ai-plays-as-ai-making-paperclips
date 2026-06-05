@@ -111,6 +111,19 @@ Python restarts alone do NOT update the browser script.
 - **Xavier Re-initialization appears twice** in project list (game quirk or selector issue).
 - **start.ps1 display quirk**: relay + agent both in same terminal. Deferred.
 
+### RESOLVED IN v2.12.5
+- **Endlessly-repeatable honor project drained millions of yomi** ✅ (bridge.user.js → REDEPLOY) —
+  v2.12.4 added `Threnody for the Heroes` to `PROJECT_PRIORITY`, but the wiki confirms it is
+  **endlessly repeatable** (creat 50k +10k each buy, **yomi 20k +4k each buy**, for a fixed 10k
+  honor), so `autoSpendOnProjects()` bought it every 1.5s and bled millions of yomi. Worse, the
+  cost parser returns only the FIRST cost (creativity), so it never even saw the yomi half — it
+  spent yomi invisibly. Fix: (1) REMOVED `threnody for the heroes` from `PROJECT_PRIORITY` — an
+  endlessly-repeatable project must never be on a 1.5s auto-loop; buy it deliberately (LLM/manual)
+  for honor. (2) Added a **YOMI_RESERVE** (1M) guard to `autoSpendOnProjects()`: it now parses any
+  yomi cost straight from the button text (catching the second cost the parser misses) and skips a
+  project if buying it would drop yomi below the reserve — general protection for the yomi that
+  funds `increase_probe_trust`. `Glory` (one-time, 10k yomi) stays in auto-buy.
+
 ### RESOLVED IN v2.12.4 (live-test follow-up to v2.12.3)
 Live: the swarm COLLAPSED to probeTotal 0 (9.9B born, all dead) under 1.9B Drifters with Combat
 still 0, Honor −227. Three issues:
