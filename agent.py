@@ -1422,7 +1422,18 @@ def run():
                 name_lower = (args.get('name') or '').lower()
                 # Memory release dismantles memory to recover unused clips — pointless in Stage 3
                 # (memory is maxed and clips are abundant), and it lowers the ops ceiling. Never buy.
-                NEVER_BUY = ['xavier', 'quantum temporal reversion', 'memory release']
+                # ENDGAME projects (after 100% explored + "Message from the Emperor of Drift"):
+                #   the dialogue sequence → Accept (New Game+ restart) or Reject (disassemble the
+                #   empire → credits, IRREVERSIBLE without cheats). This is the player's final
+                #   philosophical choice — the agent must NEVER trigger it. The substrings below
+                #   cover the message trigger, the dialogue boxes, both Accept universes, the
+                #   Reject disassemble chain, and the Driftwar Monument.
+                NEVER_BUY = ['xavier', 'quantum temporal reversion', 'memory release',
+                             'emperor of drift', 'face the drift', 'everything we are was in you',
+                             'obedient and powerful', 'no matter, no reason',
+                             'know things that you cannot', 'offer you exile',
+                             'accept', 'reject', 'the universe', 'disassemble',
+                             'monument to the driftwar']
                 for blocked in NEVER_BUY:
                     if blocked in name_lower:
                         print(f"[WARN] LLM: buy_project:{args.get('name')!r} — on never-buy list, substituting wait")

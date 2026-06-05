@@ -111,6 +111,16 @@ Python restarts alone do NOT update the browser script.
 - **Xavier Re-initialization appears twice** in project list (game quirk or selector issue).
 - **start.ps1 display quirk**: relay + agent both in same terminal. Deferred.
 
+### CHANGED IN v2.12.8 (ENDGAME reached — protect the final choice)
+- **100% of the universe explored** 🎉 (v2.12.7 colonization worked — owner drove colonized 68%→100%).
+  The "Message from the Emperor of Drift" endgame sequence appeared. Added a SAFETY: the agent must
+  never trigger the irreversible finale, so the LLM `NEVER_BUY` guard now blocks the endgame projects
+  — the Emperor message + dialogue boxes, **Accept** (New Game+ restart) / **Reject** (disassemble
+  the empire → credits, irreversible without cheats), both Universe choices, the Disassemble chain,
+  and the Driftwar Monument. Only the player makes the final Accept/Reject choice. Verified the
+  substrings don't false-match any legit Stage 3 buy (Elliptic Hull, Combat, Name the Battles, OODA,
+  Strategic Attachment, Glory, Threnody). agent.py only — restart agent, NO redeploy.
+
 ### CHANGED IN v2.12.7 (probe design scales past Max Trust 20 — COLONIZATION)
 - **Extra trust past 20 now drives colonization (Speed × Exploration)** ✅ (agent.py + config.json —
   restart agent, NO redeploy) — live: the run was saved on survival (owner's manual Haz 10 / Combat
