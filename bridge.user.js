@@ -349,7 +349,6 @@
         'strategic modeling',
         'megaclippers',               // project version (12,000 ops) — unlocks the mega button
         'spectral froth annealment',  // 200% more wire supply per spool
-        'new strategy: a100',         // better tournament strategy for yomi
         'quantum foam annealment',    // 1000% more wire supply per spool
         'hypnodrones',
         // Stage 2 manufacturing (ops-cost, must be purchased in this order)
@@ -407,9 +406,32 @@
         'cure for cancer',
         'world peace',
         'global warming',
+        // Tournament STRATEGY unlocks — LOW PRIORITY (kept LAST so they're claimed only after every
+        // more valuable project above). The generic "new strategy:" substring matches EVERY variant
+        // (A100, B100, GREEDY, GENEROUS, MINIMAX, TIT FOR TAT, BEAT LAST). They cost only ops and
+        // just add strategies for the RANDOM tournament picker to draw from — nice to have, not
+        // urgent. (Owner request: buy all strat projects eventually, at low priority.)
+        'new strategy:',
     ];
 
     let lastProjectClick = 0;
+
+    // Should the auto-buyer SKIP this project to protect the YOMI_RESERVE?
+    // The reserve only matters in STAGE 3: it protects the yomi that funds increase_probe_trust and
+    // stops the endlessly-repeatable Threnody from draining yomi (both Stage 3). In Stage 1/2 it must
+    // NOT block small-yomi projects — e.g. Coherent Extrapolated Volition (3,000 yomi, +1 Trust) or
+    // Swarm Computing (36k yomi) — because a 1M reserve would freeze them forever. The game already
+    // disables a project button you can't afford, so affordability is enforced without the reserve.
+    // Used by BOTH autoSpendOnProjects() (to skip the buy) AND opsProjectWaiting() (so a reserve-
+    // blocked project isn't counted as "waiting" — otherwise it would pause AutoTourney forever
+    // while AutoTourney is the very thing minting the yomi needed to clear the reserve: a deadlock).
+    function wouldSkipForYomiReserve(btn) {
+        if (getPhase() !== 3) return false;            // reserve applies only in Stage 3
+        const yomiM = btn.innerText.match(/([\d,]+)\s*yomi/i);
+        if (!yomiM) return false;
+        const yomiCost = parseInt(yomiM[1].replace(/,/g, ''));
+        return (getNum('yomiDisplay', 0) - yomiCost) < YOMI_RESERVE;
+    }
 
     function autoSpendOnProjects() {
         if (Date.now() - lastProjectClick < 1500) return;
@@ -429,16 +451,11 @@
                 if (!btn.innerText.toLowerCase().includes(keyword)) continue;
                 const cost = getProjectCost(btn);
                 if (!cost) continue;
-                // YOMI RESERVE guard. getProjectCost() returns only ONE cost type, but several
-                // Stage 3 projects ALSO cost yomi as a second cost it never sees. Parse any yomi
-                // cost straight from the button text and refuse to spend yomi below the reserve —
-                // this protects the yomi we need for increase_probe_trust from being silently
-                // drained (e.g. by repeatable honor projects).
-                const yomiM = btn.innerText.match(/([\d,]+)\s*yomi/i);
-                if (yomiM) {
-                    const yomiCost = parseInt(yomiM[1].replace(/,/g, ''));
-                    if (currentYomi - yomiCost < YOMI_RESERVE) continue;  // would dip below reserve — skip
-                }
+                // YOMI RESERVE guard (Stage 3 only) — getProjectCost() returns only ONE cost type, but
+                // several Stage 3 projects ALSO cost yomi as a second cost it never sees; skip a buy
+                // that would drain the yomi reserved for increase_probe_trust (or the repeatable
+                // Threnody). See wouldSkipForYomiReserve() — it no-ops outside Stage 3.
+                if (wouldSkipForYomiReserve(btn)) continue;
                 const canAfford =
                     (cost.type === 'ops'        && currentOps   >= cost.amount) ||
                     (cost.type === 'creativity'  && currentCrt   >= cost.amount) ||
@@ -482,7 +499,11 @@
             for (const btn of btns) {
                 if (!btn.innerText.toLowerCase().includes(keyword)) continue;
                 const cost = getProjectCost(btn);
-                if (cost && cost.type === 'ops' && cost.amount <= maxOps) return true;
+                // Must mirror what autoSpendOnProjects() will actually buy: ignore a project the
+                // yomi-reserve would make it skip, or we'd hold tournaments forever for a project
+                // that never gets bought (deadlock).
+                if (cost && cost.type === 'ops' && cost.amount <= maxOps
+                        && !wouldSkipForYomiReserve(btn)) return true;
             }
         }
         return false;

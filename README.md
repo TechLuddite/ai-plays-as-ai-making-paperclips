@@ -348,7 +348,16 @@ It's a work in progress. But it works.
 
 ## Version History
 
-**v2.12.11 (current) — hold tournaments while a project is claimable**
+**v2.12.12 (current) — buy strategy projects (low priority) + fix a Stage-1 reserve deadlock**
+
+All tournament "New Strategy:" unlocks now auto-buy at low priority (claimed after the more valuable
+projects). Also fixed a yomi-reserve bug: the 1,000,000-yomi reserve — meant only to protect Stage 3
+probe-trust spending — was freezing legitimate cheap Stage-1 projects (e.g. Coherent Extrapolated
+Volition's 3,000-yomi cost), and the tournament-hold logic would then wait forever for a project that
+could never be bought. The reserve is now Stage-3 only, and the hold logic ignores reserve-blocked
+projects. (`bridge.user.js` — needed a Tampermonkey redeploy.)
+
+**v2.12.11 — hold tournaments while a project is claimable**
 
 Tournaments ran non-stop and drained ops that should have gone to projects: a project costing 90–100%
 of the ops cap could never be afforded, because tournaments fire at 90% of cap and spend the ops

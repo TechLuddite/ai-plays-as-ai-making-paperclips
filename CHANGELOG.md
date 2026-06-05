@@ -4,6 +4,30 @@ All notable changes to this project are documented here.
 
 ---
 
+## [2.12.12] - 2026-06-05 — Buy strategy projects (low priority) + fix Stage-1 YOMI_RESERVE deadlock
+
+### Added
+- **All tournament "New Strategy:" projects now auto-buy at LOW priority** (`bridge.user.js`) — owner
+  wants every strategy unlock (A100, B100, GREEDY, GENEROUS, MINIMAX, TIT FOR TAT, BEAT LAST) bought
+  eventually, but they're low value (just add strategies for the RANDOM picker). Added a single
+  generic `'new strategy:'` substring at the END of `PROJECT_PRIORITY` (matches every variant) and
+  removed the old high-priority `'new strategy: a100'`, so they're all claimed only after the more
+  valuable projects above. **Tampermonkey REDEPLOY required.**
+
+### Fixed
+- **`YOMI_RESERVE` froze legit Stage-1/2 yomi projects** (`bridge.user.js`) — live: Coherent
+  Extrapolated Volition (3,000 yomi / 500 creat / 20,000 ops, +1 Trust) was affordable (ops maxed at
+  21,000) but never bought, because the 1,000,000 yomi reserve blocked it (24,604 − 3,000 < 1M). The
+  reserve only matters in Stage 3 (protecting increase_probe_trust yomi + stopping the repeatable
+  Threnody), so it's now gated to Stage 3 via a new `wouldSkipForYomiReserve()` helper. In Stage 1/2
+  the game's own button-disable still enforces affordability. (Would also have starved Swarm
+  Computing's 36k-yomi unlock in Stage 2.)
+- **`opsProjectWaiting()` deadlock** (`bridge.user.js`) — it counted CEV as "waiting" (ops ≤ cap)
+  even though the yomi-reserve made `autoSpendOnProjects()` skip it, so AutoTourney would pause
+  forever for a project that could never be bought — while AutoTourney is the very thing minting the
+  yomi needed to clear the reserve. It now applies the same `wouldSkipForYomiReserve()` check, so a
+  reserve-blocked project isn't counted as waiting (deadlock-proof in every stage).
+
 ## [2.12.11] - 2026-06-05 — Hold tournaments while a project is claimable (stop ops drain)
 
 ### Fixed

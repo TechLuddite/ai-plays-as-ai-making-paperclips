@@ -115,6 +115,21 @@ Python restarts alone do NOT update the browser script.
 - **Xavier Re-initialization appears twice** in project list (game quirk or selector issue).
 - **start.ps1 display quirk**: relay + agent both in same terminal. Deferred.
 
+### RESOLVED IN v2.12.12 (strat projects low-priority + Stage-1 YOMI_RESERVE deadlock)
+- **All "New Strategy:" projects now auto-buy at LOW priority** ✅ (bridge.user.js → REDEPLOY) — owner
+  wants every strategy unlock (A100/B100/GREEDY/GENEROUS/MINIMAX/TIT FOR TAT/BEAT LAST) bought
+  eventually but they're low value. Added a generic `'new strategy:'` substring at the END of
+  `PROJECT_PRIORITY` (matches all variants); removed the old high-pri `'new strategy: a100'`.
+- **`YOMI_RESERVE` (1M) froze legit Stage-1/2 yomi projects** ✅ (bridge.user.js → REDEPLOY) — live:
+  Coherent Extrapolated Volition (3,000 yomi / 20,000 ops, +1 Trust) was affordable (ops 21,000/21,000)
+  but never bought — the 1M reserve blocked it (24,604−3,000 < 1M). The reserve only matters in Stage 3
+  (protects increase_probe_trust yomi + the repeatable Threnody), so it's now gated to Stage 3 via a
+  `wouldSkipForYomiReserve()` helper; in Stage 1/2 the game's button-disable enforces affordability.
+- **`opsProjectWaiting()` deadlock** ✅ — it counted CEV as "waiting" (ops ≤ cap) even though the
+  reserve made the auto-buyer skip it, so AutoTourney would pause FOREVER for a project that could
+  never be bought (and AutoTourney is what mints the yomi to clear the reserve). Now applies the same
+  `wouldSkipForYomiReserve()` check, so reserve-blocked projects aren't counted (deadlock-proof).
+
 ### RESOLVED IN v2.12.11 (tournaments drained ops that should have gone to claimable projects)
 - **Tournaments ran non-stop, starving projects that were claimable once ops filled to the cap** ✅
   (bridge.user.js + agent.py → REDEPLOY + restart agent) — live: ops 17,545/21,000, AutoTourney ON. A
