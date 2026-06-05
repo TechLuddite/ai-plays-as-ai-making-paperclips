@@ -750,9 +750,8 @@ def _probe_design_advice(state):
             return 'raise_probe_nav', f"Nav {nav}->{NAV_TARGET} (matter access) [{avail} free]"
         if speed < SPEED_TARGET:
             return 'raise_probe_speed', f"Speed {speed}->{SPEED_TARGET} (explore) [{avail} free]"
-        # Aux production (Fac/Harv/Wire) — 1 each for clip/matter sustainability, but only after
-        # the core stats. With Max Trust 20 these never get a point (correctly 0); once the cap is
-        # raised (Honor → increase_max_trust) the spare points fill them in.
+        # Aux production (Fac/Harv/Wire) — 1 each (probe_aux_max), part of the initial design per
+        # the owner's spec (at least 1 in each spec). Allocated after Haz/Rep and Speed/Nav.
         if fac < AUX_MAX:
             return 'raise_probe_fac', f"Factory {fac}->{AUX_MAX} (sustain clip supply) [{avail} free]"
         if harv < AUX_MAX:
@@ -763,43 +762,46 @@ def _probe_design_advice(state):
         # Self-Replication accelerates colonization (wiki: spare points go to replication).
         return 'raise_probe_rep', f"spare {avail} trust — extra Rep to accelerate colonization"
 
-    # ── COMBAT EMERGENCY (BEFORE launch): Drifters attacking, Combat below target, but trust is
-    # MAXED with no free points. This MUST come before the launch branch — otherwise, when the
-    # swarm has collapsed to 0 probes under attack, the advisor relaunches into the Drifters every
-    # tick (they die instantly at Combat 0) and never fixes Combat. Get Combat allocated FIRST,
-    # THEN launch into a defended position.
-    if drifters > 0 and combat < COMBAT_TARGET:
-        # Preferred: raise the trust CAP with Honor (doesn't sacrifice another stat) — but only
-        # when Honor can afford it (Honor comes from killing Drifters / honor projects).
+    # ── BUY TRUST toward the budget (no free points to place right now) ───────────────
+    # buy_to is 15 (the up-front design) and grows to 20 when Drifters appear (adding the
+    # 5-point Combat RESERVE). Buying here BEFORE the rebalance means: when combat opens and
+    # there's still cap headroom (we only built to 15), we simply BUY the reserved 5 and the
+    # allocate-first block spends them on Combat — no need to lower Rep. And buying BEFORE
+    # launch means the initial design (incl. the combat reserve under attack) is in place
+    # before the first probes go out.
+    if total < buy_to and (trust_cost <= 0 or yomi >= trust_cost):
+        return 'increase_probe_trust', (f"buy Probe Trust {total}/{buy_to} to allocate next "
+                                        f"(cost {int(trust_cost):,} yomi — you have plenty)")
+
+    # ── COMBAT EMERGENCY — only when truly MAXED (no cap room left to buy the reserve) ────
+    # Reached only if Drifters are present, Combat is still short, AND total trust is at the
+    # Max (so the buy-reserve above couldn't fire). This is the fallback that kept the run
+    # alive when an old allocation had no Combat headroom: free a point by lowering an
+    # over-allocated stat (or raise the cap with Honor). Comes BEFORE launch so a collapsed
+    # swarm under attack fixes Combat before relaunching into the Drifters.
+    if drifters > 0 and combat < COMBAT_TARGET and total >= mx:
+        # Preferred: raise the trust CAP with Honor (doesn't sacrifice another stat).
         honor    = safe_float(state.get('honor'), 0)
         max_cost = safe_float(state.get('maxTrustCost'), 0)
-        if total >= mx and max_cost > 0 and honor >= max_cost:
+        if max_cost > 0 and honor >= max_cost:
             return 'increase_max_trust', (f"Combat needs points but trust maxed ({total}/{mx}); "
                                           f"increase_max_trust ({int(max_cost):,} Honor) for more room")
-        # Otherwise REBALANCE: free a point by lowering an OVER-allocated stat so the next tick
-        # can raise Combat (the allocate-first block above spends the freed point on Combat).
-        # Self-Replication is the donor — once the swarm is huge, the wiki says lower replication
-        # and fund combat/exploration. Never lower Hazard (the swarm dies without it).
-        if rep > 4:
+        # Otherwise REBALANCE: lower an over-allocated stat (never Hazard) to free a Combat point.
+        if rep > REP_TARGET:
             return 'lower_probe_rep', (f"⚔ UNDER ATTACK (Drifters {int(drifters):,}), Combat "
-                                       f"{combat}/{COMBAT_TARGET} but trust maxed — lower Rep {rep} "
+                                       f"{combat}/{COMBAT_TARGET}, trust maxed — lower Rep {rep} "
                                        f"to free a point for Combat")
-        if nav > 1:
+        if nav > NAV_TARGET:
             return 'lower_probe_nav', (f"⚔ UNDER ATTACK, Combat {combat}/{COMBAT_TARGET}, trust "
-                                       f"maxed, Rep at floor — lower Nav {nav} to free a Combat point")
-        if speed > 1:
+                                       f"maxed — lower Nav {nav} to free a Combat point")
+        if speed > SPEED_TARGET:
             return 'lower_probe_speed', (f"⚔ UNDER ATTACK, Combat {combat}/{COMBAT_TARGET}, trust "
                                          f"maxed — lower Speed {speed} to free a Combat point")
 
     # ── LAUNCH once the points are placed (Haz/Rep set) and nothing is flying ─────────
-    # (Reached only when NOT in an unresolved combat emergency — see the block above.)
+    # (Reached only when NOT mid-build and NOT in an unresolved combat emergency.)
     if probes <= 0 and haz >= min(HAZ_TARGET, 5) and rep >= min(REP_TARGET, 4):
         return 'launch_probe', "haz/rep allocated, probeTotal 0 — launch the initial probe batch"
-
-    # ── BUY MORE TRUST only when there are no free points to place ────────────────────
-    if total < buy_to and (trust_cost <= 0 or yomi >= trust_cost):
-        return 'increase_probe_trust', (f"buy Probe Trust {total}/{buy_to} to allocate next "
-                                        f"(cost {int(trust_cost):,} yomi — you have plenty)")
 
     return None, None
 

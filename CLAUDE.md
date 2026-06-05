@@ -111,6 +111,18 @@ Python restarts alone do NOT update the browser script.
 - **Xavier Re-initialization appears twice** in project list (game quirk or selector issue).
 - **start.ps1 display quirk**: relay + agent both in same terminal. Deferred.
 
+### CHANGED IN v2.12.6 (owner-specified initial probe design)
+- **New initial 20-trust probe allocation** ✅ (agent.py + config.json — restart agent, NO redeploy)
+  — owner's spec for the opening design: **1 each** in Speed, Exploration(nav), Factory, Harvester,
+  Wire; **5 each** in Self-Replication(rep) and Hazard(haz); **5 in Combat HELD IN RESERVE** until
+  combat opens (Drifters appear). That's 15 allocated up front + 5 reserved = 20. Config targets
+  changed: haz 6→5, rep 6→5, speed 4→1, nav 4→1, combat 8→5 (aux unchanged at 1). The advisor now
+  builds only to 15 (`buy_to` excludes Combat until Drifters), so there is ALWAYS 5 points of cap
+  headroom: when combat opens it BUYS the reserved 5 and allocates Combat — **no Rep sacrifice**
+  (the rebalance that nearly lost the last run is now just a maxed-out safety net). Reordered
+  `_probe_design_advice()`: allocate-first → buy (deploy reserve) → combat-rebalance (only when
+  truly maxed) → launch. Aux (Fac/Harv/Wire) are now part of the initial design, not deferred.
+
 ### RESOLVED IN v2.12.5
 - **Endlessly-repeatable honor project drained millions of yomi** ✅ (bridge.user.js → REDEPLOY) —
   v2.12.4 added `Threnody for the Heroes` to `PROJECT_PRIORITY`, but the wiki confirms it is
