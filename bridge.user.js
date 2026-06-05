@@ -803,6 +803,9 @@
             case 'set_swarm_work':      success = setSwarmSlider(40);  note = '20% Think'; break;
             // Recover a "Disorganized" swarm (drone imbalance tipped over) — costs 5k yomi.
             case 'sync_swarm':          success = clickBtn('btnSynchSwarm'); note = success ? 'synchronized swarm' : 'btnSynchSwarm not found'; break;
+            // Revive a "Bored" swarm (thinking with no Available Matter left) — costs creativity
+            // (10k first time, +10k each subsequent). Un-bores so gift generation can resume.
+            case 'entertain_swarm':     success = clickBtn('btnEntertainSwarm'); note = success ? 'entertained swarm' : 'btnEntertainSwarm not found'; break;
 
             // ── Project purchase ──────────────────────────────────────────────
             case 'buy_project': {

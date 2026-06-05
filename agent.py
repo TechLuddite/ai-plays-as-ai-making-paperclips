@@ -57,6 +57,8 @@ VALID ACTIONS — use exactly one, spelled exactly as shown:
     set_swarm_work              — slider to 20% Think: favor production (clips/matter)
     sync_swarm                  — fix a "Disorganized" swarm (costs 5,000 yomi); do this FIRST
                                   when swarmStatus shows Disorganized, or no gifts will generate
+    entertain_swarm             — revive a "Bored" swarm (costs creativity); do this when
+                                  swarmStatus shows Bored, or gift generation stays stopped
     add_memory                  — spend ONE Swarm Gift on memory (raises ops ceiling toward 120)
     add_processor               — spend ONE Swarm Gift on a processor (ops regen / creativity)
     (In Stage 2, Swarm Gifts are your "trust": add_memory/add_processor spend a gift, not trust.)
@@ -557,6 +559,8 @@ def format_state(state):
             flag = " ← grow via invest_deposit / upgrade_investment"
         if k == 'swarmStatus' and 'disorg' in str(v).lower():
             flag = " ⚠ DISORGANIZED — sync_swarm NOW (5k yomi); no gifts generate until you do"
+        if k == 'swarmStatus' and 'bored' in str(v).lower():
+            flag = " ⚠ BORED — entertain_swarm (costs creativity); gifts stay stopped until you do"
         if k == 'swarmGifts' and fv >= 1:
             # Swarm Gifts = the Stage 2 "trust". Use the SAME ladder as Stage 1 so processors
             # don't run away from memory: memory leads toward the next milestone (120 → 175 →
@@ -972,7 +976,7 @@ def validate_action(action):
         # strategic modeling / autotourney
         'toggle_auto_tourney', 'set_strategy_random', 'run_tournament',
         # swarm computing (Stage 2) — Work/Think slider; gifts spent via add_memory/add_processor
-        'set_swarm_think', 'set_swarm_balanced', 'set_swarm_work', 'sync_swarm',
+        'set_swarm_think', 'set_swarm_balanced', 'set_swarm_work', 'sync_swarm', 'entertain_swarm',
         # investments
         'invest_deposit', 'invest_withdraw',
         'set_invest_low', 'set_invest_med', 'set_invest_hi',
@@ -1045,6 +1049,7 @@ def run():
     prev_phase = None  # used to detect a stage transition (e.g. Stage 2 -> Stage 3)
     withdraw_cooldown = 0  # ticks remaining where deposit is suppressed after a withdraw
     swarm_sync_cooldown = 0  # ticks to wait after a sync before checking disorganization again
+    entertain_cooldown = 0  # ticks to wait after entertaining before re-checking boredom
     space_explore_seen = 0  # ticks Space Exploration has been available but unbought (LLM-first backstop)
     domain_loop_tracker = {}  # domain → list of last 5 actions (updated after each LLM response)
     domain_loop_warnings = ""  # injected into the NEXT tick's prompt
@@ -1129,6 +1134,24 @@ def run():
             ov.append({"action": "sync_swarm", "args": {},
                        "thought": "OVERRIDE: swarm Disorganized — Synchronize the Swarm (5k yomi)"})
             swarm_sync_cooldown = 5   # ~10s for the status to update before re-checking
+
+        # Swarm boredom recovery (Stage 2 OR 3) — the sibling mechanical fix to sync_swarm.
+        # When the swarm "thinks" with no Available Matter left it goes "Bored" and stops
+        # generating Swarm Gifts; the cure is "Entertain the Swarm" (costs creativity: 10k the
+        # first time, +10k each subsequent). Same rationale as sync: the LLM repeatedly failed to
+        # press the button, so it's a deterministic override. We keep a creativity FLOOR
+        # (entertain_creativity_floor, default 450k) so entertaining never starves the Stage 3
+        # creativity projects (Name the Battles 225k + Strategic Attachment 175k). Cooldown lets
+        # the status update before re-checking.
+        entertain_floor = _cfg.get("entertain_creativity_floor", 450_000)
+        if entertain_cooldown > 0:
+            entertain_cooldown -= 1
+        elif 'bored' in str(state.get('swarmStatus', '')).lower() \
+                and safe_float(state.get('creativity'), 0) >= entertain_floor:
+            print(f"[!!!] SWARM: Bored — entertaining (creativity)")
+            ov.append({"action": "entertain_swarm", "args": {},
+                       "thought": "OVERRIDE: swarm Bored — Entertain the Swarm (creativity)"})
+            entertain_cooldown = 5   # ~10s for the status to update before re-checking
 
         # Space Exploration — the Stage 2 → Stage 3 gateway (the goal of the whole Stage 2
         # buildup). It's the LLM's #1 priority in the prompt, so the LLM gets first crack at

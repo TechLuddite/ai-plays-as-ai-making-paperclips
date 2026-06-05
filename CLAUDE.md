@@ -111,6 +111,19 @@ Python restarts alone do NOT update the browser script.
 - **Xavier Re-initialization appears twice** in project list (game quirk or selector issue).
 - **start.ps1 display quirk**: relay + agent both in same terminal. Deferred.
 
+### RESOLVED IN v2.12.2
+- **"Entertain the Swarm" was never wired** ✅ — when the swarm "thinks" with no Available Matter
+  left it goes **Bored** and stops generating Swarm Gifts; the cure is the "Entertain the Swarm"
+  button (`btnEntertainSwarm`, costs creativity: 10k first time, +10k each subsequent). Only
+  `sync_swarm` (Disorganized) had ever been handled — Bored had no action at all (so the agent sat
+  on a Bored swarm, as observed live). Added the sibling mechanical recovery, mirroring sync_swarm:
+  bridge `entertain_swarm` action (clicks `btnEntertainSwarm`); agent OBS flag ("⚠ BORED —
+  entertain_swarm"); a hard override that fires when `swarmStatus` contains "bored" AND creativity
+  ≥ `entertain_creativity_floor` (config, default 450k — kept above the Stage 3 creativity projects
+  Name the Battles 225k + Strategic Attachment 175k so entertaining never starves them), with a
+  5-tick cooldown. Works in Stage 2 OR 3. `entertain_swarm` added to ACTIONS + validate_action.
+  **bridge.user.js change → TAMPERMONKEY REDEPLOY required** (+ restart agent for the override).
+
 ### RESOLVED IN v2.12.1 (live-test follow-up to v2.12)
 First live test of v2.12 surfaced three issues, now fixed:
 - **Advisor bought trust to 20 BEFORE allocating any** ✅ — the LLM sat at "Trust 10/20, 0

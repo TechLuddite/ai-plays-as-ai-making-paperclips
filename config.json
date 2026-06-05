@@ -18,5 +18,8 @@
   "probe_speed_target":  4,
   "probe_nav_target":    4,
   "probe_combat_target": 8,
-  "probe_aux_max":       1
+  "probe_aux_max":       1,
+
+  "_comment_swarm": "entertain_creativity_floor = keep at least this much creativity in reserve before the override spends creativity on 'Entertain the Swarm' (revives a Bored swarm). Set above the Stage 3 creativity projects (Name the Battles 225k + Strategic Attachment 175k = 400k) so entertaining never starves them. Entertain costs 10k creativity the first time, +10k each subsequent.",
+  "entertain_creativity_floor": 450000
 }
