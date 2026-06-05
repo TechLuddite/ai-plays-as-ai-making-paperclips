@@ -594,7 +594,16 @@ def format_state(state):
         if k == 'colonized':
             flag = " ← primary Stage 3 goal (reach 100%)"
         if k == 'probeTotal' and fv == 0:
-            flag = " ⚠ NO PROBES — launch_probe now (nothing explores without probes)"
+            # Do NOT tell the LLM to "launch now" while Hazard Remediation is unset — at
+            # Haz < 3 every launched probe is lost to hazards instantly (observed: 154
+            # launched, 154 lost). Steer it to allocate Hazard FIRST; the PROBE PLAN
+            # handles the launch once haz/rep are placed.
+            haz_now = _probe_int(state, 'probeHaz')
+            if haz_now < 3:
+                flag = (" ⚠ 0 probes — but DON'T launch yet: allocate Hazard Remediation first "
+                        "(probes die instantly at Haz 0). Follow the PROBE PLAN above.")
+            else:
+                flag = " ⚠ NO PROBES — follow the PROBE PLAN (launch once haz/rep are set)"
         if k == 'probeTrust':
             # value looks like "used/total" — show available points and what to do.
             try:
@@ -692,48 +701,55 @@ def _probe_design_advice(state):
     probes   = safe_float(state.get('probeTotal'), 0)
     drifters = safe_float(state.get('drifters'),   0)
 
-    # 1) BUY TRUST toward the opening cap while we have points to gain and yomi to spend.
-    buy_cap = min(TRUST_TARGET, mx)
-    if total < buy_cap and (trust_cost <= 0 or yomi >= trust_cost):
-        return 'increase_probe_trust', (f"buy Probe Trust {total}/{buy_cap} "
+    # How much total trust we actually want to USE (the sum of our stat targets). We buy
+    # toward this, capped at the current Max Trust. Buying beyond what we allocate just
+    # raises value drift for nothing, so the budget = the allocation, not a blind "to 20".
+    desired = HAZ_TARGET + REP_TARGET + SPEED_TARGET + NAV_TARGET
+    if drifters > 0:
+        desired += COMBAT_TARGET
+    buy_to = min(desired, mx)
+
+    # ── ALLOCATE FIRST (the v2.12.1 fix) ─────────────────────────────────────────────
+    # The original ladder bought ALL trust to the cap before allocating a single point,
+    # so the LLM sat at "10/20, 0 allocated" while launched probes died at Haz 0. Spend
+    # any FREE points immediately, in priority order, BEFORE buying more.
+    if avail >= 1:
+        # Combat is urgent the moment Drifters appear — defend before anything else.
+        if drifters > 0 and combat < COMBAT_TARGET:
+            return 'raise_probe_combat', (f"Drifters present ({int(drifters):,}); "
+                                          f"Combat {combat}->{COMBAT_TARGET} [{avail} free]")
+        if haz < HAZ_TARGET:
+            return 'raise_probe_haz', f"Haz {haz}->{HAZ_TARGET} (protect probes; they die at Haz 0) [{avail} free]"
+        if rep < REP_TARGET:
+            return 'raise_probe_rep', f"Rep {rep}->{REP_TARGET} (grow the swarm) [{avail} free]"
+        # Matter access — keep Speed >= Nav (OODA combat survival).
+        if speed < SPEED_TARGET and speed <= nav:
+            return 'raise_probe_speed', f"Speed {speed}->{SPEED_TARGET} (explore; keep Speed>=Nav) [{avail} free]"
+        if nav < NAV_TARGET:
+            return 'raise_probe_nav', f"Nav {nav}->{NAV_TARGET} (matter access) [{avail} free]"
+        if speed < SPEED_TARGET:
+            return 'raise_probe_speed', f"Speed {speed}->{SPEED_TARGET} (explore) [{avail} free]"
+        # All core targets met but points still free (e.g. Max Trust was raised) → extra
+        # Self-Replication accelerates colonization (wiki: spare points go to replication).
+        return 'raise_probe_rep', f"spare {avail} trust — extra Rep to accelerate colonization"
+
+    # ── LAUNCH once the points are placed (Haz/Rep set) and nothing is flying ─────────
+    if probes <= 0 and haz >= min(HAZ_TARGET, 5) and rep >= min(REP_TARGET, 4):
+        return 'launch_probe', "haz/rep allocated, probeTotal 0 — launch the initial probe batch"
+
+    # ── BUY MORE TRUST only when there are no free points to place ────────────────────
+    if total < buy_to and (trust_cost <= 0 or yomi >= trust_cost):
+        return 'increase_probe_trust', (f"buy Probe Trust {total}/{buy_to} to allocate next "
                                         f"(cost {int(trust_cost):,} yomi — you have plenty)")
 
-    # Combat is urgent the moment Drifters appear — protect the swarm from losses.
-    if drifters > 0 and combat < COMBAT_TARGET:
-        if avail >= 1:
-            return 'raise_probe_combat', (f"Drifters present ({int(drifters):,}); "
-                                          f"Combat {combat}->{COMBAT_TARGET} to win battles")
-        # No free points but combat needed — raise the cap with Honor (comes in abundance),
-        # but only when Honor can actually afford it (else the button is disabled).
+    # Combat needs room but trust is maxed → raise the cap with Honor (comes in abundance),
+    # only when Honor can actually afford it (else the button is disabled).
+    if drifters > 0 and combat < COMBAT_TARGET and total >= mx:
         honor    = safe_float(state.get('honor'), 0)
         max_cost = safe_float(state.get('maxTrustCost'), 0)
-        if total >= mx and max_cost > 0 and honor >= max_cost:
+        if max_cost > 0 and honor >= max_cost:
             return 'increase_max_trust', (f"Combat needs points but trust maxed ({total}/{mx}); "
                                           f"increase_max_trust ({int(max_cost):,} Honor) for more room")
-
-    # 2) HAZARD first — guard the swarm before anything else grows.
-    if avail >= 1 and haz < HAZ_TARGET:
-        return 'raise_probe_haz', f"Haz {haz}->{HAZ_TARGET} (protect probes from losses) [{avail} free]"
-
-    # 3) SELF-REPLICATION — the engine of swarm growth.
-    if avail >= 1 and rep < REP_TARGET:
-        return 'raise_probe_rep', f"Rep {rep}->{REP_TARGET} (grow the swarm) [{avail} free]"
-
-    # 4) LAUNCH the initial batch once haz/rep are set and nothing is flying yet.
-    if probes <= 0 and haz >= min(HAZ_TARGET, 5) and rep >= min(REP_TARGET, 4):
-        return 'launch_probe', "haz/rep set, probeTotal 0 — launch the initial probe batch"
-
-    # 5) MATTER — Speed/Exploration. Keep Speed >= Nav (OODA combat survival).
-    if avail >= 1 and speed < SPEED_TARGET and speed <= nav:
-        return 'raise_probe_speed', f"Speed {speed}->{SPEED_TARGET} (explore; keep Speed>=Nav) [{avail} free]"
-    if avail >= 1 and nav < NAV_TARGET:
-        return 'raise_probe_nav', f"Nav {nav}->{NAV_TARGET} (matter access) [{avail} free]"
-    if avail >= 1 and speed < SPEED_TARGET:
-        return 'raise_probe_speed', f"Speed {speed}->{SPEED_TARGET} (explore) [{avail} free]"
-
-    # 6) Spare points with all targets met → push replication for faster colonization.
-    if avail >= 1:
-        return 'raise_probe_rep', f"spare {avail} trust — extra Rep to accelerate colonization"
 
     return None, None
 
@@ -1273,6 +1289,15 @@ def run():
             if action in ('set_swarm_think', 'set_swarm_balanced', 'set_swarm_work') \
                     and state.get('performance') is None:
                 print(f"[WARN] LLM: {action} — swarm not active yet, substituting wait")
+                action = 'wait'
+            # Veto launching probes into certain death: at Hazard Remediation < 3 every probe
+            # is lost to hazards immediately (wiki: below 3 = heavy losses; at Haz 0 it's 100%
+            # — observed "Lost to hazards: 154" with 154 launched, 0 surviving). Each probe
+            # also costs 100 quadrillion clips, so this just burns clips. This vetoes a
+            # known-futile action (like the unaffordable-project guard) — it does NOT play the
+            # probe game; once Haz is allocated the LLM launches freely.
+            if action == 'launch_probe' and _probe_int(state, 'probeHaz') < 3:
+                print(f"[WARN] LLM: launch_probe — Hazard Remediation < 3, probes would die instantly; substituting wait")
                 action = 'wait'
             if action in invest_actions and not state.get('portValue', ''):
                 print(f"[WARN] LLM: {action} — investment system not active, substituting wait")

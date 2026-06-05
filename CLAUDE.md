@@ -92,10 +92,11 @@ Python restarts alone do NOT update the browser script.
 - Stage 2: tournaments fully working (Yomi flowing, investment engine auto-upgrading to Level 3+);
   production starvation, domain output, project queue all resolved (v2.3); domain grading (v2.4);
   Power & manufacturing engine (solar/batteries/drones/factories) auto-built (v2.7)
-- Stage 3 (space exploration, probe design): actions/prompt/OBS fully wired (v2.11); the bootstrap
-  STALL is FIXED LLM-side in v2.12 (stage-aware OBS/prompt + history reset on stage change + a
-  deterministic probe-design advisor, all Python-only — no redeploy) — PENDING LIVE TEST.
-  See "RESOLVED IN v2.12" below.
+- Stage 3 (space exploration, probe design): bootstrap stall fixed in v2.12 (stage-aware OBS/prompt
+  + history reset + probe-design advisor); v2.12.1 follow-up fixes the live-test issues — advisor
+  now ALLOCATES trust before buying more, premature launches at Haz 0 are vetoed, and Stage 3
+  support projects (Elliptic Hull Polytopes etc.) auto-buy. v2.12.1 needs a Tampermonkey REDEPLOY
+  (bridge PROJECT_PRIORITY change). See "RESOLVED IN v2.12.1" / "v2.12" below.
 - Best run: 13.5B+ clips, Stage 2, investment engine Level 3, Yomi accumulating, Marketing Level 20
 
 ## Known Issues
@@ -109,6 +110,29 @@ Python restarts alone do NOT update the browser script.
   will scope specific dashboard changes in a later request. Placeholder until then.
 - **Xavier Re-initialization appears twice** in project list (game quirk or selector issue).
 - **start.ps1 display quirk**: relay + agent both in same terminal. Deferred.
+
+### RESOLVED IN v2.12.1 (live-test follow-up to v2.12)
+First live test of v2.12 surfaced three issues, now fixed:
+- **Advisor bought trust to 20 BEFORE allocating any** ✅ — the LLM sat at "Trust 10/20, 0
+  allocated" while the swarm died, because `_probe_design_advice()` recommended
+  `increase_probe_trust` until total hit the cap, then allocated. REORDERED: ALLOCATE free points
+  first (combat-if-drifters → haz → rep → speed/nav), and BUY only when `avail == 0` and total is
+  below the allocation budget (`desired = sum of stat targets`, capped at Max Trust — buying beyond
+  what you allocate just raises value drift). Now at 4 free points it raises Hazard immediately.
+  agent.py only — restart agent.
+- **LLM freelance-launched probes into certain death** ✅ — the `probeTotal=0` OBS flag said
+  "launch_probe now", so the LLM launched every other tick at Haz 0 → all 154 lost to hazards.
+  Fixed the flag (Haz<3 → "DON'T launch yet, allocate Hazard first") AND added a guard in
+  `_apply_guards()` vetoing `launch_probe` when Haz<3 (substitutes wait — a futile-action veto like
+  the unaffordable-project guard, NOT a probe auto-player; the LLM launches freely once Haz is set).
+  agent.py only — restart agent.
+- **Ignored Stage 3 project (Elliptic Hull Polytopes, 125k ops — HALVES probe hazard losses)** ✅ —
+  the LLM, hyper-focused on probes, left it unbought though it directly fixes the dying swarm. Added
+  the Stage 3 ops/creativity projects to the bridge `PROJECT_PRIORITY` (elliptic hull polytopes,
+  combat, name the battles, the ooda loop, strategic attachment) so `autoSpendOnProjects()` buys
+  them when affordable — the SAME cross-stage auto-buy used for Stage 1/2 projects (the LLM still
+  owns probe DESIGN; these are just supporting tech). **bridge.user.js change → TAMPERMONKEY
+  REDEPLOY required.**
 
 ### RESOLVED IN v2.12
 - **Stage 3 LLM bootstrap stall — FIXED via stage-aware inputs** ✅ (PENDING LIVE TEST) — the LLM

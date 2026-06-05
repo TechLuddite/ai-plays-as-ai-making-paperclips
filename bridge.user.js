@@ -344,6 +344,15 @@
         // (NOTE: Self-correcting Supply Chain costs CLIPS with a word suffix we can't parse —
         //  it won't auto-buy yet. Space Exploration is intentionally NOT auto-bought: it ENDS
         //  Stage 2 and should wait for memory ~120+ and a big battery bank — handle separately.)
+        // Stage 3 probe-support projects (ops/creativity-cost — same auto-buy path as above;
+        //  the LLM still owns the probe DESIGN/allocation, these are just the supporting tech).
+        'elliptic hull polytopes',   // 125k ops — HALVES probe hazard losses. Buy ASAP: at low
+                                     //   Hazard Remediation the swarm dies to hazards (top priority).
+        'combat',                    // 150k ops — probe combat vs Drifters (unlocks when you start
+                                     //   losing probes to Drifters ~1M); only matches the project btn
+        'name the battles',          // 225k creat — unlocks Honor (raises Max Probe Trust)
+        'the ooda loop',             // 175k ops — Speed aids combat survival
+        'strategic attachment',      // 175k creat — Stage 3 honor/creativity project
         // creativity-cost
         'creativity',
         'neural net optimizer',
