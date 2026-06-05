@@ -11,13 +11,13 @@
   "memory_milestones": [20, 70, 120, 175, 250, 300],
   "trust_proc_floor":  5,
 
-  "_comment_probe": "Stage 3 Von Neumann probe-design targets. The probe-design OBS advisor recommends ONE raise/lower/launch/buy action per tick to drive these stat levels under the shared Probe Trust budget. Owner's initial 20-trust design: 1 each in Speed/Exploration(nav)/Factory/Harvester/Wire, 5 each in Self-Replication(rep) and Hazard(haz), and 5 in Combat HELD IN RESERVE until combat opens (Drifters appear). That's 15 allocated + 5 reserved = 20. By building only to 15 up front, there's always cap headroom so Combat deploys instantly without sacrificing Rep. probe_aux_max = points per Factory/Harvester/Wire. Combat stays unbought/0 until Drifters appear, then the 5 reserve is bought + allocated.",
+  "_comment_probe": "Stage 3 Von Neumann probe-design targets — a 3-phase design that scales as Max Trust grows past 20 (wiki Stages 'Stage 3 Strategy'). PHASE 1 PRE-LAUNCH (15 trust): 1 each in Speed/Exploration(nav)/Factory/Harvester/Wire, 5 each in Self-Replication(rep) and Hazard(haz) — built before the first launch. PHASE 2 COMBAT RESERVE: held until combat opens (Drifters appear), then Combat is bought+allocated up to probe_combat_target (wiki: 6-8 'lose very few battles'; a big swarm that outnumbers the drifters needs no more). PHASE 3 COLONIZE: ALL remaining trust (as Max Trust rises via Honor) pours into Speed + Exploration, kept Speed>=Exploration, because matter/exploration rate = Speed x Exploration (wiki) — this is what drives colonized% up. haz/rep/speed/nav/combat = the phase-1/2 targets; spare beyond them goes to Speed/Exploration. probe_aux_max = points per Factory/Harvester/Wire.",
   "probe_trust_target": 20,
   "probe_haz_target":    5,
   "probe_rep_target":    5,
   "probe_speed_target":  1,
   "probe_nav_target":    1,
-  "probe_combat_target": 5,
+  "probe_combat_target": 8,
   "probe_aux_max":       1,
 
   "_comment_swarm": "entertain_creativity_floor = keep at least this much creativity in reserve before the override spends creativity on 'Entertain the Swarm' (revives a Bored swarm). Set above the Stage 3 creativity projects (Name the Battles 225k + Strategic Attachment 175k = 400k) so entertaining never starves them. Entertain costs 10k creativity the first time, +10k each subsequent.",

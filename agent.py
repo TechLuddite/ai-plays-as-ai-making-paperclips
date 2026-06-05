@@ -718,17 +718,16 @@ def _probe_design_advice(state):
     probes   = safe_float(state.get('probeTotal'), 0)
     drifters = safe_float(state.get('drifters'),   0)
 
-    # How much total trust we actually want to USE (the sum of our stat targets). We buy
-    # toward this, capped at the current Max Trust. Buying beyond what we allocate just
-    # raises value drift for nothing, so the budget = the allocation, not a blind "to 20".
-    # Fac/Harv/Wire get AUX_MAX (1) each for clip/matter sustainability (wiki: a big swarm
-    # self-provides — 1 each is plenty), but only once the cap is large enough to afford them
-    # after the core stats. At the default Max Trust of 20 they stay 0 (every point is needed
-    # for Haz/Combat/Rep/Speed/Nav) — that 0 is wiki-correct, not a bug.
-    desired = HAZ_TARGET + REP_TARGET + SPEED_TARGET + NAV_TARGET + 3 * AUX_MAX
-    if drifters > 0:
-        desired += COMBAT_TARGET
-    buy_to = min(desired, mx)
+    # Three-phase budget that scales as Max Trust grows (wiki Stage 3 strategy):
+    #   PHASE 1 (pre-launch): BASELINE = Haz5 + Rep5 + Speed1 + Nav1 + 3×Aux1 = 15.
+    #   PHASE 2 (combat opens): + COMBAT_TARGET once Drifters appear (the reserve).
+    #   PHASE 3 (colonize): everything ABOVE survival pours into Speed+Exploration to cover the
+    #           galaxy — matter/exploration rate = Speed × Exploration (wiki).
+    baseline = HAZ_TARGET + REP_TARGET + SPEED_TARGET + NAV_TARGET + 3 * AUX_MAX  # 15
+    survival = baseline + (COMBAT_TARGET if drifters > 0 else 0)                  # 15, or +combat
+    # Before the FIRST launch, build only the survival design (a quick, low-value-drift launch).
+    # After launch, buy toward the FULL cap so the spare can fund colonization (Speed/Exploration).
+    buy_to = min(survival, mx) if probes <= 0 else mx
 
     # ── ALLOCATE FIRST (the v2.12.1 fix) ─────────────────────────────────────────────
     # The original ladder bought ALL trust to the cap before allocating a single point,
@@ -758,9 +757,22 @@ def _probe_design_advice(state):
             return 'raise_probe_harv', f"Harvester {harv}->{AUX_MAX} (sustain matter) [{avail} free]"
         if wire < AUX_MAX:
             return 'raise_probe_wire', f"Wire {wire}->{AUX_MAX} (sustain wire) [{avail} free]"
-        # All targets met but points still free (e.g. Max Trust was raised further) → extra
-        # Self-Replication accelerates colonization (wiki: spare points go to replication).
-        return 'raise_probe_rep', f"spare {avail} trust — extra Rep to accelerate colonization"
+        # PHASE 3 — COLONIZE. Survival stats are set; pour spare points into Speed and Exploration
+        # to actually cover the galaxy. The matter/exploration rate is the PRODUCT Speed × Exp
+        # (wiki), so keep them balanced and keep Speed ≥ Exploration (the OODA Loop also turns
+        # Speed into combat survival). THIS is what drives colonized% up from ~0.
+        # BUT hold the Combat reserve free: before Drifters open combat, keep COMBAT_TARGET points
+        # unallocated so Combat deploys instantly when it opens (don't colonize into the reserve).
+        # Once Drifters are present, Combat is filled by the priority check at the top of this
+        # block, so no separate hold is needed (combat_reserve = 0).
+        combat_reserve = (COMBAT_TARGET - combat) if (drifters <= 0 and combat < COMBAT_TARGET) else 0
+        if avail > combat_reserve:
+            if speed <= nav:
+                return 'raise_probe_speed', (f"COLONIZE: Speed {speed}->{speed+1} "
+                                             f"(matter rate = Speed×Exp; keep Speed≥Exp) [{avail} free]")
+            return 'raise_probe_nav', (f"COLONIZE: Exploration {nav}->{nav+1} "
+                                       f"(matter rate = Speed×Exp) [{avail} free]")
+        # else: the only free points left ARE the combat reserve — hold them (fall through).
 
     # ── BUY TRUST toward the budget (no free points to place right now) ───────────────
     # buy_to is 15 (the up-front design) and grows to 20 when Drifters appear (adding the

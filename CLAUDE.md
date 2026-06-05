@@ -111,6 +111,23 @@ Python restarts alone do NOT update the browser script.
 - **Xavier Re-initialization appears twice** in project list (game quirk or selector issue).
 - **start.ps1 display quirk**: relay + agent both in same terminal. Deferred.
 
+### CHANGED IN v2.12.7 (probe design scales past Max Trust 20 — COLONIZATION)
+- **Extra trust past 20 now drives colonization (Speed × Exploration)** ✅ (agent.py + config.json —
+  restart agent, NO redeploy) — live: the run was saved on survival (owner's manual Haz 10 / Combat
+  13) but `colonized` was stuck near 0% because Speed 1 × Exploration 3 ≈ 0 exploration rate. Per
+  the wiki (Stages "Stage 3 Strategy"): once the swarm is big and combat is handled, *"increase
+  Exploration and Speed to cover the universe"* — matter/exploration rate = **Speed × Exploration**,
+  keep **Speed ≥ Exploration**. Implemented a 3-phase budget in `_probe_design_advice()` that scales
+  with Max Trust: PHASE 1 pre-launch baseline (15: haz5 rep5 + 1 each in speed/exp/fac/harv/wire);
+  PHASE 2 combat reserve (held free until Drifters open combat, then filled to `probe_combat_target`,
+  now **8** per wiki — a swarm that outnumbers the drifters needs no more); PHASE 3 colonize — ALL
+  trust beyond baseline+combat pours into Speed+Exploration (Speed≥Exp). `buy_to` is the survival
+  design before the first launch (quick, low value-drift) and the FULL Max Trust cap after launch
+  (to fund colonization). The combat reserve is held free (colonization won't eat it) until Drifters
+  appear. NOTE: colonization is now yomi-gated — buying trust to allocate Speed/Exp needs Yomi
+  (AutoTourney supplies it). Combat 6-8 is the wiki ceiling; the owner's manual Combat 13 was
+  over-invested vs exploring. All targets are config.json tunables.
+
 ### CHANGED IN v2.12.6 (owner-specified initial probe design)
 - **New initial 20-trust probe allocation** ✅ (agent.py + config.json — restart agent, NO redeploy)
   — owner's spec for the opening design: **1 each** in Speed, Exploration(nav), Factory, Harvester,
