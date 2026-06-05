@@ -4,6 +4,26 @@ All notable changes to this project are documented here.
 
 ---
 
+## [2.12.13] - 2026-06-05 — Auto-buy cash-cost & philanthropy +Trust projects
+
+### Fixed
+- **+Trust projects with a CASH cost were never auto-bought** (`bridge.user.js`) — live: $16.4M cash
+  sat idle while "Hostile Takeover ($1,000,000)" (+1 Trust) went unclaimed, and Trust is the Stage-1
+  progression bottleneck (next clip-milestone Trust was ~1.3B clips away). Root cause: `getProjectCost()`
+  parsed ops/creativity/trust/yomi/clips but NOT a `$` cash cost, so cash projects returned `null` and
+  were skipped — this had also silently disabled `revtracker` ($500k), which was already in the list.
+  Added cash parsing (checked last, so multi-cost projects like Full Monopoly "3,000 yomi + $10M" still
+  resolve to their primary resource and the game's button-disable gates the cash) + a `cash`
+  affordability branch in `autoSpendOnProjects()` (using `funds`).
+
+### Added
+- **Cash +Trust business projects** to `PROJECT_PRIORITY`: `hostile takeover` ($1M), `full monopoly`
+  (3k yomi + $10M). The repeatable "A Token of Goodwill" is deliberately excluded (rising cost would
+  drain cash on a loop, cf. Threnody).
+- **`male pattern baldness`** to `PROJECT_PRIORITY` — a large +Trust philanthropy project (20,000 ops)
+  that was missing; this completes the Universal Paperclips "good works" +Trust set (CEV + Cure for
+  Cancer + Male Pattern Baldness + World Peace + Global Warming). **Tampermonkey REDEPLOY required.**
+
 ## [2.12.12] - 2026-06-05 — Buy strategy projects (low priority) + fix Stage-1 YOMI_RESERVE deadlock
 
 ### Added

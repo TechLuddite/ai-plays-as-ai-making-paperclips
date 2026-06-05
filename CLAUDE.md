@@ -115,6 +115,20 @@ Python restarts alone do NOT update the browser script.
 - **Xavier Re-initialization appears twice** in project list (game quirk or selector issue).
 - **start.ps1 display quirk**: relay + agent both in same terminal. Deferred.
 
+### RESOLVED IN v2.12.13 (+Trust cash & philanthropy projects were never auto-bought)
+- **CASH-cost +Trust projects skipped** ✅ (bridge.user.js → REDEPLOY) — live: $16.4M idle while
+  "Hostile Takeover ($1M, +1 Trust)" went unclaimed and Trust is the Stage-1 bottleneck. `getProjectCost()`
+  didn't parse `$` costs → cash projects returned null → skipped (also silently disabled `revtracker`,
+  already in the list). Added cash parsing (checked LAST so multi-cost projects like Full Monopoly
+  "3k yomi + $10M" resolve to their primary resource; the game's button-disable gates the cash) + a
+  `cash` branch in `autoSpendOnProjects()` using `funds`. Added `hostile takeover` + `full monopoly`
+  to PROJECT_PRIORITY (repeatable "A Token of Goodwill" deliberately excluded — would drain cash).
+- **`male pattern baldness` (+Trust, 20k ops) was missing from PROJECT_PRIORITY** ✅ — a large-Trust
+  philanthropy project sitting unclaimed. Added it; now the complete UP "good works" +Trust set is
+  covered (CEV + Cure for Cancer + Male Pattern Baldness + World Peace + Global Warming). NOTE: if a
+  NEW +Trust project ever appears that isn't on this list it won't auto-buy — a generic "+N Trust"
+  auto-buy rule is the permanent fix if whack-a-mole recurs (offered to owner; not yet built).
+
 ### RESOLVED IN v2.12.12 (strat projects low-priority + Stage-1 YOMI_RESERVE deadlock)
 - **All "New Strategy:" projects now auto-buy at LOW priority** ✅ (bridge.user.js → REDEPLOY) — owner
   wants every strategy unlock (A100/B100/GREEDY/GENEROUS/MINIMAX/TIT FOR TAT/BEAT LAST) bought

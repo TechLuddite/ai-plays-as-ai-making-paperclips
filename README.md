@@ -348,7 +348,15 @@ It's a work in progress. But it works.
 
 ## Version History
 
-**v2.12.12 (current) — buy strategy projects (low priority) + fix a Stage-1 reserve deadlock**
+**v2.12.13 (current) — auto-buy cash-cost & philanthropy +Trust projects**
+
+Trust is the Stage-1 progression bottleneck, but several +Trust projects were never being claimed.
+Cash-cost projects (e.g. "Hostile Takeover", and the already-listed "RevTracker") were skipped because
+the project-cost parser didn't understand `$` costs — so millions in cash sat idle. Added cash-cost
+parsing and the cash +Trust business projects to the auto-buy list, plus "Male Pattern Baldness" to
+complete the philanthropy +Trust set. (`bridge.user.js` — needed a Tampermonkey redeploy.)
+
+**v2.12.12 — buy strategy projects (low priority) + fix a Stage-1 reserve deadlock**
 
 All tournament "New Strategy:" unlocks now auto-buy at low priority (claimed after the more valuable
 projects). Also fixed a yomi-reserve bug: the 1,000,000-yomi reserve — meant only to protect Stage 3

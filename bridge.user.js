@@ -306,11 +306,17 @@
         const yomiM = text.match(/([\d,]+)\s*yomi/i);
         // Clip costs use word suffixes ("1 sextillion clips") — capture number + optional word.
         const clipM = text.match(/([\d,.]+)\s*([a-zA-Z]+)?\s*clips/i);
+        // CASH cost, e.g. "Hostile Takeover ($1,000,000)" / "RevTracker ($500,000)" — these +Trust
+        // business projects were never auto-bought because no cost type matched (returned null).
+        // Checked LAST so multi-cost projects (e.g. Full Monopoly "3,000 yomi, $10,000,000") still
+        // resolve to their primary resource and the game's button-disable gates the cash side.
+        const cashM = text.match(/\$\s*([\d,]+(?:\.\d+)?)/);
         if (opsM)  return { type: 'ops',        amount: parseInt(opsM[1].replace(/,/g,'')) };
         if (crtM)  return { type: 'creativity',  amount: parseInt(crtM[1].replace(/,/g,'')) };
         if (trstM) return { type: 'trust',       amount: parseInt(trstM[1]) };
         if (yomiM) return { type: 'yomi',        amount: parseInt(yomiM[1].replace(/,/g,'')) };
         if (clipM) return { type: 'clips',       amount: parseBigNum(clipM[2] ? `${clipM[1]} ${clipM[2]}` : clipM[1]) };
+        if (cashM) return { type: 'cash',        amount: parseFloat(cashM[1].replace(/,/g,'')) };
         return null;
     }
 
@@ -350,6 +356,12 @@
         'megaclippers',               // project version (12,000 ops) — unlocks the mega button
         'spectral froth annealment',  // 200% more wire supply per spool
         'quantum foam annealment',    // 1000% more wire supply per spool
+        // CASH-cost +Trust business projects (one-time). Trust is the Stage-1 progression
+        // bottleneck and cash piles up idle, so buy these when affordable. NOTE: the repeatable
+        // "A Token of Goodwill" is deliberately NOT here (rising cost would drain cash on a loop,
+        // cf. Threnody). Full Monopoly also costs 3k yomi (matched first; button-disable gates cash).
+        'hostile takeover',           // $1,000,000 → +1 Trust
+        'full monopoly',              // 3,000 yomi + $10,000,000 → +1 Trust
         'hypnodrones',
         // Stage 2 manufacturing (ops-cost, must be purchased in this order)
         'tóth tubule enfolding',     // 45k ops — unlocks manufacturing status indicators
@@ -402,8 +414,11 @@
         'the tóth sausage conjecture',
         'donkey space',
         'tubes within tubes',
+        // Philanthropy / "good works" projects — each grants Trust (the Stage-1 progression
+        // bottleneck), so they're high-value. This is the complete UP set (CEV + the four cures):
         'coherent extrapolated volition',
         'cure for cancer',
+        'male pattern baldness',      // 20,000 ops → big Trust grant (was missing — never auto-bought)
         'world peace',
         'global warming',
         // Tournament STRATEGY unlocks — LOW PRIORITY (kept LAST so they're claimed only after every
@@ -441,6 +456,7 @@
         const currentTrust = parseInt(getText('trust') || '0');
         const currentYomi  = getNum('yomiDisplay', 0);
         const currentClips = parseBigNum(getText('unusedClipsDisplay'));  // Stage 2 spendable pool
+        const currentFunds = getNum('funds');                            // cash (Stage 1 +Trust projects)
 
         const btns = Array.from(
             document.querySelectorAll('#projectListTop button, #projectsDiv button')
@@ -461,7 +477,8 @@
                     (cost.type === 'creativity'  && currentCrt   >= cost.amount) ||
                     (cost.type === 'trust'       && currentTrust >= cost.amount) ||
                     (cost.type === 'yomi'        && currentYomi  >= cost.amount) ||
-                    (cost.type === 'clips'       && currentClips >= cost.amount);
+                    (cost.type === 'clips'       && currentClips >= cost.amount) ||
+                    (cost.type === 'cash'        && currentFunds >= cost.amount);
                 if (canAfford) {
                     btn.click();
                     lastProjectClick = Date.now();
