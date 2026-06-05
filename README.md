@@ -241,6 +241,15 @@ Browser-side constants are at the top of `bridge.user.js`:
 ## Limitations & Known Issues
 
 **Active — low priority:**
+- **LLM `wait`-loop with a stale, wrong-stage thought (qwen2.5 anchoring).** In Stage 1 the model
+  can sit on `wait` for many consecutive ticks while re-quoting a Stage-2 thought it's anchored on
+  (e.g. *"Memory 23 < 120 for Space Exploration, slider at Work, no gifts yet"* — but swarm
+  sliders/gifts don't exist in Stage 1). It's **not harmful**: Stage 1 is rule-driven, so the
+  fast-rules keep buying clippers, projects (now incl. cash/+Trust and strategy projects), and
+  allocating trust regardless of the LLM. It's a cosmetic/behavioral quirk of a small local model
+  re-anchoring on its rolling history; the loop-breaker tip nudges but doesn't always break it.
+  Documented for now — a real fix (tighter Stage-1 OBS/prompt or a stronger loop-breaker, or
+  trying qwen3.6) is deferred. See `memory/qwen2.5_review.md`.
 - **Xavier Re-initialization appears twice** in the project list (game quirk, selector issue).
 - **`start.ps1` display quirk** — relay and agent share a terminal window. Use the manual
   two-terminal start as the reliable alternative.

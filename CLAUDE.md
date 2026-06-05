@@ -110,6 +110,16 @@ Python restarts alone do NOT update the browser script.
   live testing shows the LLM still won't launch probes.)*
 
 ### ACTIVE — LOW PRIORITY
+- **LLM `wait`-loop with a stale wrong-stage thought (qwen2.5 anchoring)** — in Stage 1 the model can
+  emit `wait` for many consecutive ticks while re-quoting a Stage-2 thought it's anchored on (live
+  example: *"Memory 23 < 120 needed for Space Exploration. Slider at Work, no gifts yet → start
+  thinking"* — but the swarm slider/gifts don't exist in Stage 1). NOT harmful: Stage 1 is rule-driven,
+  so the fast-rules keep progressing (clippers, projects incl. cash/+Trust/strategy, trust allocation)
+  regardless of the LLM. Root cause is the small model re-anchoring on its rolling `history` window
+  (max_history=6, all the same stale thought) — the per-domain loop-breaker tip nudges but doesn't
+  reliably break it. DOCUMENTED ONLY (owner's call). Possible future fixes: tighten the Stage-1
+  OBS/prompt so a Stage-2 goal can't surface, clear history sooner on a wait-loop, strengthen the
+  loop-breaker, or try qwen3.6. See memory/qwen2.5_review.md.
 - **Dashboard needs further refinement** — the v2.8 stage-grouped layout is a first pass; owner
   will scope specific dashboard changes in a later request. Placeholder until then.
 - **Xavier Re-initialization appears twice** in project list (game quirk or selector issue).
