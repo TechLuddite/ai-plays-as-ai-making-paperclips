@@ -90,6 +90,13 @@ In `bridge.user.js` (constants at top of file):
 Python restarts alone do NOT update the browser script.
 
 ## Current Status
+- ⏸️ **LAST RUN ENDED IN STAGE 1 (owner stopped it, ~tick 3815, v2.12.13 deployed):** clips 8.24B,
+  memory 47 (toward the 70 HypnoDrones wall), trust 71 (fully allocated), portValue **$112.9B**,
+  funds $36.6M, creativity 434k, yomi stuck ~11.6k. The v2.12.10–.13 fixes are live and working
+  (MegaClipper crossover, tournament-hold, strat + cash + philanthropy +Trust projects all auto-buy;
+  trust climbed well to 71). BUT the run surfaced the new **AutoTourney-flapping bug** (see ACTIVE —
+  HIGH PRIORITY): the agent spent the last ~39 minutes toggling AutoTourney every tick and minting no
+  Yomi. Fix that FIRST next session, then continue pushing Stage 1 → 2.
 - 🎉 **FIRST COMPLETE RUN (v2.12.8):** the agent played autonomously Stage 1 → 2 → 3 → **100% of the
   universe explored**, reaching the endgame ("Message from the Emperor of Drift" → the player's
   Accept/Reject choice). The agent is blocked from triggering that irreversible finale (NEVER_BUY).
@@ -106,8 +113,27 @@ Python restarts alone do NOT update the browser script.
 ## Known Issues
 
 ### ACTIVE — HIGH PRIORITY
-- *(none — the Stage 3 bootstrap stall is addressed in v2.12; see "RESOLVED IN v2.12". Reopen if
-  live testing shows the LLM still won't launch probes.)*
+- **AutoTourney override FLAPS every tick (`toggle_auto_tourney` spam) — NEXT-SESSION TOP FIX.**
+  End-of-run log analysis (long Stage-1 run, tick 3815): the agent emitted the `toggle_auto_tourney`
+  OVERRIDE on **1,171 consecutive ticks** (~39 min, tick 2644 → end), doing nothing else. It began the
+  instant trust finished allocating (last non-toggle action was `add_processor` at tick 2644 — after
+  that, trust=71 fully allocated so the `_mem_proc_ladder` override went quiet and ONLY the AutoTourney
+  override fired). Symptom: live state shows `autoTourneyOn: ON` AND `opsProjectWaiting: True` on the
+  SAME tick, every tick → the v2.12.11 override (agent.py ~line 1293) sees `waiting and at_on` → posts
+  toggle OFF → but the next state read STILL shows ON → re-toggles → forever. Effect: AutoTourney
+  thrashes, yomi stalled (~11,666, even dropped from an earlier 32k) so no Yomi accumulates for
+  Stage 2/3. ROOT-CAUSE LEADS (verify next session): (1) the toggle-OFF isn't reflected in
+  `autoTourneyStatus` — either `executeAction('toggle_auto_tourney')` click isn't sticking, the relay
+  replays the queued action multiple times per 2s state cycle (even # of clicks = net no-op), or the
+  game re-enables it; (2) `opsProjectWaiting` is STUCK True — at memory 47 / maxOps 47,000 some
+  PROJECT_PRIORITY ops-project is revealed-but-unbuyable (it's NOT in `availableProjects`, which showed
+  only "Xavier Re-initialization (100,000 creat)", so it's a disabled/greyed ops button the DOM scan
+  still counts) → the override permanently *wants* OFF. FIX DIRECTIONS: make the toggle edge-trigger
+  robust to stale/partial state (e.g. add a cooldown + confirm the status actually changed before
+  re-firing; or have the BRIDGE own the AutoTourney pause directly off `opsProjectWaiting` instead of
+  the agent round-trip), AND find which ops-project is stuck "waiting" and either exclude it or make it
+  buyable (cf. the v2.12.12 CEV/yomi-reserve deadlock — likely the same class). See the v2.12.11 +
+  v2.12.12 entries below for the design context.
 
 ### ACTIVE — LOW PRIORITY
 - **LLM `wait`-loop with a stale wrong-stage thought (qwen2.5 anchoring)** — in Stage 1 the model can

@@ -240,6 +240,14 @@ Browser-side constants are at the top of `bridge.user.js`:
 
 ## Limitations & Known Issues
 
+**Active — high priority (next session):**
+- **AutoTourney override flaps every tick.** In a long Stage-1 run the agent spent ~39 minutes
+  toggling AutoTourney on/off every tick (the `toggle_auto_tourney` override fired on 1,171 ticks
+  straight) and minting no Yomi. The pause-AutoTourney-while-a-project-is-waiting logic (added so ops
+  fill to buy claimable projects) gets stuck: the live state reads AutoTourney `ON` and "ops project
+  waiting" `True` on the same tick, so the override keeps re-issuing the toggle. To be fixed first
+  next session — see `CLAUDE.md` Known Issues for the root-cause leads and fix directions.
+
 **Active — low priority:**
 - **LLM `wait`-loop with a stale, wrong-stage thought (qwen2.5 anchoring).** In Stage 1 the model
   can sit on `wait` for many consecutive ticks while re-quoting a Stage-2 thought it's anchored on
